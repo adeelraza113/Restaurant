@@ -372,19 +372,22 @@ public function updatePaymentPlan(Request $request, $id)
         $user = Auth::user();
         $userEmail = $user->email;
         $paymentPlan = TblTablePaymentPlan::findOrFail($id);
-        $paymentPlan->update([
-            'PricePerHour' => $request->input('PricePerHour', $paymentPlan->PricePerHour),
-            'PricePerExtraSeat' => $request->input('PricePerExtraSeat', $paymentPlan->PricePerExtraSeat),
-            'Discount' => $request->input('Discount', $paymentPlan->Discount),
-            'Updated_By' => $userEmail,
-            'UpdatedDateTime' => Carbon::now(),
-            'Revision' => $paymentPlan->Revision + 1,
+        $fieldsToUpdate = $request->only([
+            'PricePerHour',
+            'PricePerExtraSeat',
+            'Discount',
         ]);
+        $fieldsToUpdate['Updated_By'] = $userEmail;
+        $fieldsToUpdate['UpdatedDateTime'] = Carbon::now();
+        $fieldsToUpdate['Revision'] = $paymentPlan->Revision + 1;
+        $paymentPlan->update($fieldsToUpdate);
+
         return response()->json(['message' => 'Payment Plan updated successfully'], 200);
     } catch (\Exception $e) {
         return response()->json(['error' => 'Failed to update Payment Plan', 'details' => $e->getMessage()], 500);
     }
 }
+
 
 public function updateReservation(Request $request, $id)
 {
