@@ -388,24 +388,24 @@ public function updatePaymentPlan(Request $request, $id)
     }
 }
 
-
 public function updateReservation(Request $request, $id)
 {
     try {
         $user = Auth::user();
         $userEmail = $user->email;
         $reservation = TblTableReservation::findOrFail($id);
-        $reservation->update([
-            'SittingTableID' => $request->input('SittingTableID', $reservation->SittingTableID),
-            'SittingPlan' => $request->input('SittingPlan', $reservation->SittingPlan),
-            'ReservationNumber' => $request->input('ReservationNumber', $reservation->ReservationNumber),
-            'StartTime' => $request->input('StartTime', $reservation->StartTime),
-            'EndTime' => $request->input('EndTime', $reservation->EndTime),
-            'ExtendedTime' => $request->input('ExtendedTime', $reservation->ExtendedTime),
-            'Updated_By' => $userEmail,
-            'UpdatedDateTime' => Carbon::now(),
-            'Revision' => $reservation->Revision + 1,
+        $fieldsToUpdate = $request->only([
+            'SittingTableID',
+            'SittingPlan',
+            'ReservationNumber',
+            'StartTime',
+            'EndTime',
+            'ExtendedTime',
         ]);
+        $fieldsToUpdate['Updated_By'] = $userEmail;
+        $fieldsToUpdate['UpdatedDateTime'] = Carbon::now();
+        $fieldsToUpdate['Revision'] = $reservation->Revision + 1;
+        $reservation->update($fieldsToUpdate);
         return response()->json(['message' => 'Reservation updated successfully'], 200);
     } catch (\Exception $e) {
         return response()->json(['error' => 'Failed to update Reservation', 'details' => $e->getMessage()], 500);
