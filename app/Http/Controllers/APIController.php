@@ -333,16 +333,33 @@ public function updateSittingTable(Request $request, $id)
         $user = Auth::user();
         $userEmail = $user->email;
         $sittingTable = TblSittingTableS::findOrFail($id);
-        $sittingTable->update([
-            'TableName' => $request->input('TableName', $sittingTable->TableName),
-            'TableNo' => $request->input('TableNo', $sittingTable->TableNo),
-            'SittingCapacity' => $request->input('SittingCapacity', $sittingTable->SittingCapacity),
-            'SittingPlan' => $request->input('SittingPlan', $sittingTable->SittingPlan),
-            'TableTypeID' => $request->input('TableTypeID', $sittingTable->TableTypeID),
-            'Updated_By' => $userEmail,
-            'UpdatedDateTime' => Carbon::now(),
-            'Revision' => $sittingTable->Revision + 1,
-        ]);
+        $updateData = [];
+        if ($request->has('TableName')) {
+            $updateData['TableName'] = $request->input('TableName');
+        }
+        if ($request->has('TableNo')) {
+            $updateData['TableNo'] = $request->input('TableNo');
+        }
+        if ($request->has('SittingCapacity')) {
+            $updateData['SittingCapacity'] = $request->input('SittingCapacity');
+        }
+        if ($request->has('SittingPlan')) {
+            $updateData['SittingPlan'] = $request->input('SittingPlan');
+        }
+        if ($request->has('TableTypeID')) {
+            $updateData['TableTypeID'] = $request->input('TableTypeID');
+        }
+        if ($request->has('isReserved')) {
+            $updateData['isReserved'] = (int)$request->input('isReserved');
+        }
+        if ($request->has('show')) {
+            $updateData['show'] = (int)$request->input('show');
+        }
+        $updateData['Updated_By'] = $userEmail;
+        $updateData['UpdatedDateTime'] = Carbon::now();
+        $updateData['Revision'] = $sittingTable->Revision + 1;
+        $sittingTable->update($updateData);
+
         return response()->json(['message' => 'Sitting Table updated successfully'], 200);
     } catch (\Exception $e) {
         return response()->json(['error' => 'Failed to update Sitting Table', 'details' => $e->getMessage()], 500);

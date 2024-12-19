@@ -19,6 +19,8 @@ class TblSittingTableS extends Model
         'SittingCapacity',
         'SittingPlan',
         'TableTypeID',
+        'isReserved',
+        'show',
         'Added_By',
         'AddedDateTime',
         'Updated_By',
