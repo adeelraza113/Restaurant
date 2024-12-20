@@ -708,58 +708,49 @@ public function createBrand(Request $request)
     
     public function createProduct(Request $request)
 {
-    $request->validate([
-        'ProductCode' => 'required|string|max:255',
-        'ProductName' => 'required|string|max:255',
-        'CID' => 'nullable|integer',
-        'SCID' => 'nullable|integer',
-        'SSCID' => 'nullable|integer',
-        'PurchasedPrice' => 'nullable|numeric',
-        'SalePrice1' => 'nullable|numeric',
-        'SalePrice2' => 'nullable|numeric',
-        'DiscountPercentage' => 'nullable|numeric',
-        'ActiveDiscount' => 'nullable|boolean',
-        'ExpiryDate' => 'nullable|date',
-        'RackNo' => 'nullable|string|max:255',
-        'ReorderLevel' => 'nullable|integer',
-        'Qty' => 'nullable|integer',
-        'Image' => 'required|url', // Validate the image URL
-        'ImageName' => 'required|string|max:100',
-    ]);
-
-    $user = Auth::user();
-    $userEmail = $user->email;
-
     try {
-        if ($validator->fails()) {
-                return response()->json([
-                    'error' => 'Validation failed',
-                    'messages' => $validator->errors(),
-                ], 400);
-            }
-            $imageUrl = $request->Image;
-            // Fetch the image from the URL
-            $imageContent = file_get_contents($imageUrl);
-            if ($imageContent === false) {
-                return response()->json([
-                    'error' => 'Failed to fetch image from the URL',], 400); }
-            // Generate a unique name for the image
-            $imageName = time() . '_' . uniqid() . '.png'; // Adjust the extension as needed
-            $imagePath = 'images/' . $imageName;
-            Storage::disk('public')->put($imagePath, $imageContent);
+        $validator = Validator::make($request->all(), [
+            'ProductCode' => 'required|string|max:255',
+            'ProductName' => 'required|string|max:255',
+            'CID' => 'nullable|integer',
+            'SCID' => 'nullable|integer',
+            'SSCID' => 'nullable|integer',
+            'PurchasedPrice' => 'nullable|numeric',
+            'SalePrice1' => 'nullable|numeric',
+            'SalePrice2' => 'nullable|numeric',
+            'DiscountPercentage' => 'nullable|numeric',
+            'ActiveDiscount' => 'nullable|boolean',
+            'ExpiryDate' => 'nullable|date',
+            'RackNo' => 'nullable|string|max:255',
+            'ReorderLevel' => 'nullable|integer',
+            'Qty' => 'nullable|integer',
+            'ImageName' => 'nullable|string|max:100', // Image name (string)
+            'ImagePath' => 'required|url', // Validate the image URL
+        ]);
 
-        // Create the product in the database
-        TblProducts::create([
+        if ($validator->fails()) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'messages' => $validator->errors(),
+            ], 400);
+        }
+        $imageUrl = $request->ImagePath;
+        // Fetch the image from the URL
+        $imageContent = file_get_contents($imageUrl);
+        if ($imageContent === false) {
+            return response()->json([
+                'error' => 'Failed to fetch image from the URL',
+            ], 400);
+        }
+        $imageName = time() . '_' . uniqid() . '.png'; // Adjust the extension as needed
+        $imagePath = 'images/' . $imageName;
+        Storage::disk('public')->put($imagePath, $imageContent);
+        $product = TblProducts::create([
             'ProductCode' => $request->ProductCode,
             'ProductName' => $request->ProductName,
-            'AlternateName' => $request->AlternateName,
-            'OtherName' => $request->OtherName,
-            'Barcode' => $request->Barcode,
             'CID' => $request->CID,
             'SCID' => $request->SCID,
             'SSCID' => $request->SSCID,
-            'BoxPerCtn' => $request->BoxPerCtn,
-            'PiecePerBox' => $request->PiecePerBox,
             'PurchasedPrice' => $request->PurchasedPrice,
             'SalePrice1' => $request->SalePrice1,
             'SalePrice2' => $request->SalePrice2,
@@ -770,16 +761,18 @@ public function createBrand(Request $request)
             'ReorderLevel' => $request->ReorderLevel,
             'Qty' => $request->Qty,
             'ImageName' => $request->ImageName,
-            'ImagePath' => $imagePath ? 'storage/' . $imagePath : null, // Save the image path in the database
-            'Added_By' => $userEmail,
+            'ImagePath' => 'storage/' . $imagePath, // Save the image path in the database
+            'Added_By' => Auth::user()->email,
             'AddedDateTime' => Carbon::now(),
         ]);
-
-        return response()->json(['message' => 'Product added successfully'], 200);
+        return response()->json([
+            'message' => 'Product added successfully',
+            'data' => $product,
+        ], 200);
     } catch (\Exception $e) {
         return response()->json([
-            'message' => 'Error adding product',
-            'error' => $e->getMessage(),
+            'error' => 'An error occurred while adding the product',
+            'message' => $e->getMessage(),
         ], 500);
     }
 }
