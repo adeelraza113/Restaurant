@@ -14,6 +14,8 @@ use App\Models\TblCategory;
 use App\Models\TblSubCategory;
 use App\Models\TblSubSubCategory;
 use App\Models\TblProducts;
+use App\Models\TblAllPayments;
+use App\Models\Vendor;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
@@ -778,40 +780,79 @@ public function createBrand(Request $request)
 }
 
     
-    public function updateProduct(Request $request, $id)
-    {
-        try {
-            $user = Auth::user();
-            $userEmail = $user->email;
-            $product = TblProducts::findOrFail($id);
-            $product->update([
-                'ProductCode' => $request->input('ProductCode', $product->ProductCode),
-                'ProductName' => $request->input('ProductName', $product->ProductName),
-                'AlternateName' => $request->input('AlternateName', $product->AlternateName),
-                'OtherName' => $request->input('OtherName', $product->OtherName),
-                'Barcode' => $request->input('Barcode', $product->Barcode),
-                'CID' => $request->input('CID', $product->CID),
-                'SCID' => $request->input('SCID', $product->SCID),
-                'SSCID' => $request->input('SSCID', $product->SSCID),
-                'BoxPerCtn' => $request->input('BoxPerCtn', $product->BoxPerCtn),
-                'PiecePerBox' => $request->input('PiecePerBox', $product->PiecePerBox),
-                'PurchasedPrice' => $request->input('PurchasedPrice', $product->PurchasedPrice),
-                'SalePrice1' => $request->input('SalePrice1', $product->SalePrice1),
-                'SalePrice2' => $request->input('SalePrice2', $product->SalePrice2),
-                'DiscountPercentage' => $request->input('DiscountPercentage', $product->DiscountPercentage),
-                'ActiveDiscount' => $request->input('ActiveDiscount', $product->ActiveDiscount),
-                'ExpiryDate' => $request->input('ExpiryDate', $product->ExpiryDate),
-                'RackNo' => $request->input('RackNo', $product->RackNo),
-                'ReorderLevel' => $request->input('ReorderLevel', $product->ReorderLevel),
-                'Qty' => $request->input('Qty', $product->Qty),
-                'ImagePath' => $request->input('ImagePath', $product->ImagePath),'Updated_By' => $userEmail,
-                'UpdatedDateTime' => Carbon::now(),'Revision' => $product->Revision + 1,
-            ]);
-            return response()->json(['message' => 'Product updated successfully'], 200);
-        } catch (\Exception $e) {
-            return response()->json(['message' => 'Error updating product', 'error' => $e->getMessage()], 500);
+public function updateProduct(Request $request, $id)
+{
+    try {
+        // Validate input
+        $validator = Validator::make($request->all(), [
+            'ProductCode' => 'nullable|string|max:255',
+            'ProductName' => 'nullable|string|max:255',
+            'CID' => 'nullable|integer',
+            'SCID' => 'nullable|integer',
+            'SSCID' => 'nullable|integer',
+            'PurchasedPrice' => 'nullable|numeric',
+            'SalePrice1' => 'nullable|numeric',
+            'SalePrice2' => 'nullable|numeric',
+            'DiscountPercentage' => 'nullable|numeric',
+            'ActiveDiscount' => 'nullable|boolean',
+            'ExpiryDate' => 'nullable|date',
+            'RackNo' => 'nullable|string|max:255',
+            'ReorderLevel' => 'nullable|integer',
+            'Qty' => 'nullable|integer',
+            'ImageName' => 'nullable|string|max:100', // Image name (string)
+            'ImagePath' => 'nullable|url', // Validate the image URL
+        ]);
+        if ($validator->fails()) {
+            return response()->json([
+                'error' => 'Validation failed', 'messages' => $validator->errors(),], 400);}
+        $product = TblProducts::find($id);
+        if (!$product) {
+            return response()->json([
+                'error' => 'Product not found',
+            ], 404);}
+        // Update image if a new URL is provided
+        if ($request->has('ImagePath')) {
+            $imageUrl = $request->ImagePath;
+            $imageContent = file_get_contents($imageUrl);
+            if ($imageContent === false) {
+                return response()->json([
+                    'error' => 'Failed to fetch image from the URL',
+                ], 400);
+            }
+            // Generate a unique name for the new image
+            $imageName = time() . '_' . uniqid() . '.png'; // Adjust the extension as needed
+            $imagePath = 'images/' . $imageName;
+            Storage::disk('public')->put($imagePath, $imageContent);
+            // Update image fields in the database
+            $product->ImageName = $request->ImageName ?? $product->ImageName;
+            $product->ImagePath = 'storage/' . $imagePath;
         }
+        $product->ProductCode = $request->ProductCode ?? $product->ProductCode;
+        $product->ProductName = $request->ProductName ?? $product->ProductName;
+        $product->CID = $request->CID ?? $product->CID;
+        $product->SCID = $request->SCID ?? $product->SCID;
+        $product->SSCID = $request->SSCID ?? $product->SSCID;
+        $product->PurchasedPrice = $request->PurchasedPrice ?? $product->PurchasedPrice;
+        $product->SalePrice1 = $request->SalePrice1 ?? $product->SalePrice1;
+        $product->SalePrice2 = $request->SalePrice2 ?? $product->SalePrice2;
+        $product->DiscountPercentage = $request->DiscountPercentage ?? $product->DiscountPercentage;
+        $product->ActiveDiscount = $request->ActiveDiscount ?? $product->ActiveDiscount;
+        $product->ExpiryDate = $request->ExpiryDate ?? $product->ExpiryDate;
+        $product->RackNo = $request->RackNo ?? $product->RackNo;
+        $product->ReorderLevel = $request->ReorderLevel ?? $product->ReorderLevel;
+        $product->Qty = $request->Qty ?? $product->Qty;
+        $product->Updated_By = Auth::user()->email;
+        $product->save();
+        return response()->json([
+            'message' => 'Product updated successfully'
+        ], 200);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'An error occurred while updating the product',
+            'message' => $e->getMessage(),
+        ], 500);
     }
+}
 
     public function getProducts()
 {
@@ -880,6 +921,120 @@ public function deleteProduct($id)
         return response()->json(['message' => 'Product deleted successfully'], 200);
     } catch (\Exception $e) {
         return response()->json(['error' => 'Failed to delete product', 'details' => $e->getMessage()], 500);
+    }
+}
+
+public function createAllPayment(Request $request)
+{
+    $request->validate([
+        'ReservationID' => 'required|integer|exists:tblTableReservation,id',
+        'ReservationPaymentID' => 'required|integer|exists:tblReservationPayment,id',
+        'TotalPayment' => 'required|numeric|min:0',
+        'CashPayment' => 'nullable|numeric|min:0',
+        'CardPayment' => 'nullable|numeric|min:0',
+        'InvoiceNo' => 'required|string|max:100|unique:tblAllPayments,InvoiceNo',
+    ]);
+
+    try {
+        $user = Auth::user();
+        $userEmail = $user->email;
+        // Detect the machine name automatically
+        $machineName = gethostname(); // Retrieves the host name of the server or machine
+        $allPayment = TblAllPayments::create([
+            'ReservationID' => $request->ReservationID,
+            'ReservationPaymentID' => $request->ReservationPaymentID,
+            'TotalPayment' => $request->TotalPayment,
+            'CashPayment' => $request->CashPayment ?? 0,
+            'CardPayment' => $request->CardPayment ?? 0,
+            'InvoiceNo' => $request->InvoiceNo,
+            'Added_By' => $userEmail,
+            'MachineName' => $machineName,
+        ]);
+        return response()->json(['message' => 'Payment record added successfully'], 200);
+    } catch (\Exception $e) {
+        return response()->json(['message' => 'Error adding payment record', 'error' => $e->getMessage()], 500);
+    }
+}
+
+public function updateAllPayment(Request $request, $id)
+{
+    try {
+        // Find the record by ID
+        $allPayment = TblAllPayments::findOrFail($id);
+        // Get the authenticated user's email
+        $user = Auth::user();
+        $userEmail = $user->email;
+        // Update only the fields provided in the request
+        $allPayment->update([
+            'ReservationID' => $request->input('ReservationID', $allPayment->ReservationID),
+            'ReservationPaymentID' => $request->input('ReservationPaymentID', $allPayment->ReservationPaymentID),
+            'TotalPayment' => $request->input('TotalPayment', $allPayment->TotalPayment),
+            'CashPayment' => $request->input('CashPayment', $allPayment->CashPayment),
+            'CardPayment' => $request->input('CardPayment', $allPayment->CardPayment),
+            'InvoiceNo' => $request->input('InvoiceNo', $allPayment->InvoiceNo),
+            'Updated_By' => $userEmail,
+            'UpdatedDateTime' => now(),
+            'MachineName' => $request->input('MachineName', $allPayment->MachineName),
+            'Revision' => $allPayment->Revision + 1,
+        ]);
+
+        return response()->json(['message' => 'Payment record updated successfully'], 200);
+    } catch (\Exception $e) {
+        return response()->json(['message' => 'Error updating payment record', 'error' => $e->getMessage()], 500);
+    }
+}
+
+public function getAllPayments(Request $request, $id = null)
+{
+    try {
+        if ($id) {
+            $allPayment = TblAllPayments::findOrFail($id);
+            return response()->json(['message' => 'Payment record fetched successfully', 'data' => $allPayment], 200);
+        }
+        $allPayments = TblAllPayments::all();
+        return response()->json(['message' => 'All payment records fetched successfully', 'data' => $allPayments], 200);
+    } catch (\Exception $e) {
+        return response()->json(['message' => 'Error fetching payment records', 'error' => $e->getMessage()], 500);
+    }
+}
+
+public function deleteAllPayment($id)
+{
+    try {
+        $allPayment = TblAllPayments::findOrFail($id);
+        $allPayment->delete();
+        return response()->json(['message' => 'Payment record deleted successfully'], 200);
+    } catch (\Exception $e) {
+        return response()->json(['message' => 'Error deleting payment record', 'error' => $e->getMessage()], 500);
+    }
+}
+
+public function createVendor(Request $request)
+{
+    $request->validate([
+        'VendorName' => 'required|string|max:255',
+        'Email' => 'nullable|email|unique:tblVendor,Email',
+        'Contact' => 'nullable|string|max:20',
+        'Address' => 'nullable|string',
+        'Fax' => 'nullable|string|max:50'
+    ]);
+    $user = Auth::user();
+    $userEmail = $user->email;
+    $machineName = gethostname(); // Retrieves the host name of the server or machine
+    try {
+        $vendor = Vendor::create([
+            'VendorName' => $request->VendorName,
+            'Email' => $request->Email,
+            'Contact' => $request->Contact,
+            'Address' => $request->Address,
+            'Fax' => $request->Fax,
+            'Added_By' => $userEmail,
+            'AddedDateTime' => Carbon::now(),
+            'MachineName' =>  $machineName
+        ]);
+        return response()->json(['status' => true,'message' => 'Vendor added successfully'], 200);
+    } catch (\Exception $e) {
+        return response()->json(['status' => false,'message' => 'Error adding vendor','error' => $e->getMessage(),], 500);
     }
 }
 

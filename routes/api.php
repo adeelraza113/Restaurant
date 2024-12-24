@@ -49,5 +49,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/products/{id}', [APIController::class, 'getProductById']); // Fetch product by ID
     Route::delete('/products/{id}', [APIController::class, 'deleteProduct']); // Delete Product
 
+    Route::post('/allpayments', [APIController::class, 'createAllPayment']);
+    Route::put('/allpayments/{id}', [APIController::class, 'updateAllPayment']);
+    Route::get('/allpayments', [APIController::class, 'getAllPayments']); // Fetch all records
+    Route::get('/allpayments/{id}', [APIController::class, 'getAllPayments']); // Fetch a specific record by ID
+    Route::delete('/allpayments/{id}', [APIController::class, 'deleteAllPayment']);
+
+    Route::post('/vendors', [APIController::class, 'createVendor']);
     Route::post('/logout', [APIController::class, 'logout']);
 });
