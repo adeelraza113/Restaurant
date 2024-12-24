@@ -33,28 +33,31 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/brands', [APIController::class, 'createBrand']);
     Route::put('/brands/{id}', [APIController::class, 'updateBrand']);
-    Route::delete('/brands/{id}', [APIController::class, 'deleteBrand']); // Delete Brand
+    Route::delete('/brands/{id}', [APIController::class, 'deleteBrand']); 
     Route::post('/category', [APIController::class, 'createCategory']);
     Route::put('/category/{id}', [APIController::class, 'updateCategory']);
-    Route::delete('/category/{id}', [APIController::class, 'deleteCategory']); // Delete Category
+    Route::delete('/category/{id}', [APIController::class, 'deleteCategory']); 
     Route::post('/subcategory', [APIController::class, 'createSubCategory']);
     Route::put('/subcategory/{id}', [APIController::class, 'updateSubCategory']);
-    Route::delete('/subcategory/{id}', [APIController::class, 'deleteSubCategory']); // Delete SubCategory
+    Route::delete('/subcategory/{id}', [APIController::class, 'deleteSubCategory']); 
     Route::post('/subsubcategory', [APIController::class, 'createSubSubCategory']);
     Route::put('/subsubcategory/{id}', [APIController::class, 'updateSubSubCategory']);
-    Route::delete('/subsubcategory/{id}', [APIController::class, 'deleteSubSubCategory']); // Delete SubSubCategory
+    Route::delete('/subsubcategory/{id}', [APIController::class, 'deleteSubSubCategory']); 
     Route::post('/products', [APIController::class, 'createProduct']);
     Route::put('/products/{id}', [APIController::class, 'updateProduct']);
-    Route::get('/products', [APIController::class, 'getProducts']); // Fetch all products
-    Route::get('/products/{id}', [APIController::class, 'getProductById']); // Fetch product by ID
-    Route::delete('/products/{id}', [APIController::class, 'deleteProduct']); // Delete Product
+    Route::get('/products', [APIController::class, 'getProducts']); 
+    Route::get('/products/{id}', [APIController::class, 'getProductById']); 
+    Route::delete('/products/{id}', [APIController::class, 'deleteProduct']);
 
     Route::post('/allpayments', [APIController::class, 'createAllPayment']);
     Route::put('/allpayments/{id}', [APIController::class, 'updateAllPayment']);
-    Route::get('/allpayments', [APIController::class, 'getAllPayments']); // Fetch all records
-    Route::get('/allpayments/{id}', [APIController::class, 'getAllPayments']); // Fetch a specific record by ID
+    Route::get('/allpayments', [APIController::class, 'getAllPayments']); 
+    Route::get('/allpayments/{id}', [APIController::class, 'getAllPayments']); 
     Route::delete('/allpayments/{id}', [APIController::class, 'deleteAllPayment']);
 
     Route::post('/vendors', [APIController::class, 'createVendor']);
+    Route::put('/vendors/{id}', [APIController::class, 'updateVendor']);
+    Route::get('/vendors/{id?}', [APIController::class, 'getVendorDetails']);
+    Route::delete('/vendors/{id}', [APIController::class, 'deleteVendor']);
     Route::post('/logout', [APIController::class, 'logout']);
 });

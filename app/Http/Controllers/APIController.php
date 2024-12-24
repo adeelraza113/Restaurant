@@ -1032,9 +1032,65 @@ public function createVendor(Request $request)
             'AddedDateTime' => Carbon::now(),
             'MachineName' =>  $machineName
         ]);
-        return response()->json(['status' => true,'message' => 'Vendor added successfully'], 200);
+        return response()->json(['message' => 'Vendor added successfully'], 200);
     } catch (\Exception $e) {
-        return response()->json(['status' => false,'message' => 'Error adding vendor','error' => $e->getMessage(),], 500);
+        return response()->json(['message' => 'Error adding vendor','error' => $e->getMessage(),], 500);
+    }
+}
+
+public function updateVendor(Request $request, $id)
+{
+    $request->validate([
+        'VendorName' => 'nullable|string|max:255',
+        'Email' => 'nullable|email|unique:tblVendor,Email,' . $id,
+        'Contact' => 'nullable|string|max:20',
+        'Address' => 'nullable|string',
+        'Fax' => 'nullable|string|max:50'
+    ]);
+    $user = Auth::user();
+    $userEmail = $user->email;
+    $machineName = gethostname(); 
+    try {
+        $vendor = Vendor::findOrFail($id);
+        $vendor->update([
+            'VendorName' => $request->input('VendorName', $vendor->VendorName),
+            'Email' => $request->input('Email', $vendor->Email),
+            'Contact' => $request->input('Contact', $vendor->Contact),
+            'Address' => $request->input('Address', $vendor->Address),
+            'Fax' => $request->input('Fax', $vendor->Fax),
+            'Updated_By' => $userEmail,
+            'UpdatedDateTime' => Carbon::now(),
+            'MachineName' => $machineName,
+            'Revision' => $vendor->Revision + 1,
+        ]);
+        return response()->json(['message' => 'Vendor updated successfully'], 200);
+    } catch (\Exception $e) {
+        return response()->json([ 'message' => 'Error updating vendor', 'error' => $e->getMessage()], 500);
+    }
+}
+
+public function getVendorDetails($id = null)
+{
+    try {
+        if ($id) {
+            $vendor = Vendor::findOrFail($id);
+            return response()->json(['data' => $vendor], 200);
+        } else {
+            $vendors = Vendor::all();
+            return response()->json(['data' => $vendors], 200);
+        }
+    } catch (\Exception $e) {
+        return response()->json([ 'message' => 'Error fetching vendor data', 'error' => $e->getMessage()], 500);
+    }
+}
+public function deleteVendor($id)
+{
+    try {
+        $vendor = Vendor::findOrFail($id);
+        $vendor->delete();
+        return response()->json([ 'message' => 'Vendor deleted successfully'], 200);
+    } catch (\Exception $e) {
+        return response()->json(['message' => 'Error deleting vendor', 'error' => $e->getMessage()], 500);
     }
 }
 
