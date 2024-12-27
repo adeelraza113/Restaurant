@@ -10,54 +10,57 @@ Route::post('/generate-otp', [APIController::class, 'generateOtp']);
 Route::post('/reset-password-with-otp', [APIController::class, 'resetPasswordWithOtp']);
 
 Route::middleware('auth:sanctum')->group(function () {
-    Route::put('/update-profile', [APIController::class, 'updateProfile']);
+    Route::post('/update-profile', [UserController::class, 'updateProfile']);
     Route::post('/table-type', [APIController::class, 'createTableType']);
     Route::post('/sitting-table', [APIController::class, 'createSittingTable']);
     Route::post('/payment-plan', [APIController::class, 'createPaymentPlan']);
     Route::post('/reservation', [APIController::class, 'createReservation']);
-    Route::put('/table-type/{id}', [APIController::class, 'updateTableType']);
-    Route::put('/sitting-table/{id}', [APIController::class, 'updateSittingTable']);
-    Route::put('/payment-plan/{id}', [APIController::class, 'updatePaymentPlan']);
-    Route::put('/reservation/{id}', [APIController::class, 'updateReservation']);
-    Route::delete('/table-type/{id}', [APIController::class, 'deleteTableType']);
-    Route::delete('/sitting-table/{id}', [APIController::class, 'deleteSittingTable']);
-    Route::delete('/payment-plan/{id}', [APIController::class, 'deletePaymentPlan']);
-    Route::delete('/reservation/{id}', [APIController::class, 'deleteReservation']);
-    Route::get('/tables/{status}', [APIController::class, 'getTablesByReservationStatus']);
+    Route::put('/table-type', [APIController::class, 'updateTableType']);
+    Route::put('/sitting-table', [APIController::class, 'updateSittingTable']);
+    Route::put('/payment-plan', [APIController::class, 'updatePaymentPlan']);
+    Route::put('/reservation', [APIController::class, 'updateReservation']);
+    Route::delete('/table-type', [APIController::class, 'deleteTableType']);
+    Route::delete('/sitting-table', [APIController::class, 'deleteSittingTable']);
+    Route::delete('/payment-plan', [APIController::class, 'deletePaymentPlan']);
+    Route::delete('/reservation', [APIController::class, 'deleteReservation']);
+    Route::get('/tables', [APIController::class, 'getTablesByReservationStatus']);
 
     Route::post('/reservation-payment', [APIController::class, 'createReservationPayment']);
-    Route::put('/reservation-payment/{id}', [APIController::class, 'updateReservationPayment']);
-    Route::get('/reservation-payment', [APIController::class, 'getReservationPayment']); // Get all records
-    Route::get('/reservation-payment/{id}', [APIController::class, 'getReservationPayment']); // Get by ReservationID
-    Route::delete('/reservation-payment/{id}', [APIController::class, 'deleteReservationPayment']);
+    Route::put('/reservation-payment', [APIController::class, 'updateReservationPayment']);
+    Route::get('/reservation-payment', [APIController::class, 'getReservationPayment']);
+    Route::delete('/reservation-payment', [APIController::class, 'deleteReservationPayment']);
 
     Route::post('/brands', [APIController::class, 'createBrand']);
-    Route::put('/brands/{id}', [APIController::class, 'updateBrand']);
-    Route::delete('/brands/{id}', [APIController::class, 'deleteBrand']); 
+    Route::put('/brands', [APIController::class, 'updateBrand']);
+    Route::delete('/brands', [APIController::class, 'deleteBrand']);
     Route::post('/category', [APIController::class, 'createCategory']);
-    Route::put('/category/{id}', [APIController::class, 'updateCategory']);
-    Route::delete('/category/{id}', [APIController::class, 'deleteCategory']); 
+    Route::put('/category', [APIController::class, 'updateCategory']);
+    Route::delete('/category', [APIController::class, 'deleteCategory']);
     Route::post('/subcategory', [APIController::class, 'createSubCategory']);
-    Route::put('/subcategory/{id}', [APIController::class, 'updateSubCategory']);
-    Route::delete('/subcategory/{id}', [APIController::class, 'deleteSubCategory']); 
+    Route::put('/subcategory', [APIController::class, 'updateSubCategory']);
+    Route::delete('/subcategory', [APIController::class, 'deleteSubCategory']); 
     Route::post('/subsubcategory', [APIController::class, 'createSubSubCategory']);
-    Route::put('/subsubcategory/{id}', [APIController::class, 'updateSubSubCategory']);
-    Route::delete('/subsubcategory/{id}', [APIController::class, 'deleteSubSubCategory']); 
+    Route::put('/subsubcategory', [APIController::class, 'updateSubSubCategory']);
+    Route::delete('/subsubcategory', [APIController::class, 'deleteSubSubCategory']); 
     Route::post('/products', [APIController::class, 'createProduct']);
-    Route::put('/products/{id}', [APIController::class, 'updateProduct']);
-    Route::get('/products', [APIController::class, 'getProducts']); 
-    Route::get('/products/{id}', [APIController::class, 'getProductById']); 
-    Route::delete('/products/{id}', [APIController::class, 'deleteProduct']);
+    Route::put('/products', [APIController::class, 'updateProduct']);
+    Route::get('/products', [APIController::class, 'searchProducts']); 
+    Route::delete('/products', [APIController::class, 'deleteProduct']);
 
     Route::post('/allpayments', [APIController::class, 'createAllPayment']);
-    Route::put('/allpayments/{id}', [APIController::class, 'updateAllPayment']);
+    Route::put('/allpayments', [APIController::class, 'updateAllPayment']);
     Route::get('/allpayments', [APIController::class, 'getAllPayments']); 
-    Route::get('/allpayments/{id}', [APIController::class, 'getAllPayments']); 
-    Route::delete('/allpayments/{id}', [APIController::class, 'deleteAllPayment']);
+    Route::delete('/allpayments', [APIController::class, 'deleteAllPayment']);
 
     Route::post('/vendors', [APIController::class, 'createVendor']);
-    Route::put('/vendors/{id}', [APIController::class, 'updateVendor']);
+    Route::put('/vendors', [APIController::class, 'updateVendor']);
     Route::get('/vendors/{id?}', [APIController::class, 'getVendorDetails']);
     Route::delete('/vendors/{id}', [APIController::class, 'deleteVendor']);
+
+    Route::post('/purchase-master', [APIController::class, 'createPurchaseMaster']);
+    Route::put('/purchase-master/{id}', [APIController::class, 'updatePurchaseMaster']);
+    Route::get('/purchase-master', [APIController::class, 'getPurchaseMasters']);
+    Route::get('/purchase-master/{id}', [APIController::class, 'getPurchaseMasterById']);
+    Route::delete('/purchase-master/{id}', [APIController::class, 'deletePurchaseMaster']);
     Route::post('/logout', [APIController::class, 'logout']);
 });
