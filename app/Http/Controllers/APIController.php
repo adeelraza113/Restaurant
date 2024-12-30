@@ -1067,16 +1067,18 @@ public function getVendorDetails(Request $request)
     } catch (\Exception $e) { return response()->json(['message' => 'Error fetching vendor data', 'error' => $e->getMessage()], 500); }
 }
 
-public function deleteVendor($id)
+public function deleteVendor(Request $request)
 {
     try {
+        $id = $request->query('id'); // Retrieve 'id' from query params
+        if (!$id) { return response()->json(['message' => 'Vendor ID is required'], 400); }
         $vendor = Vendor::findOrFail($id);
         $vendor->delete();
-        return response()->json([ 'message' => 'Vendor deleted successfully'], 200);
-    } catch (\Exception $e) {
-        return response()->json(['message' => 'Error deleting vendor', 'error' => $e->getMessage()], 500);
-    }
+        return response()->json(['message' => 'Vendor deleted successfully'], 200);
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) { return response()->json(['message' => 'Vendor not found', 'error' => $e->getMessage()], 404);} 
+        catch (\Exception $e) {return response()->json(['message' => 'Error deleting vendor', 'error' => $e->getMessage()], 500);}
 }
+
 
 public function createPurchaseMaster(Request $request)
 {

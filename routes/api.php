@@ -54,9 +54,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/vendors', [APIController::class, 'createVendor']);
     Route::put('/vendors', [APIController::class, 'updateVendor']);
-    Route::get('/vendors/{id?}', [APIController::class, 'getVendorDetails']);
-    Route::delete('/vendors/{id}', [APIController::class, 'deleteVendor']);
-
+    Route::get('/vendors', [APIController::class, 'getVendorDetails']);
+    Route::delete('/vendors', [APIController::class, 'deleteVendor']);
     Route::post('/purchase-master', [APIController::class, 'createPurchaseMaster']);
     Route::put('/purchase-master/{id}', [APIController::class, 'updatePurchaseMaster']);
     Route::get('/purchase-master', [APIController::class, 'getPurchaseMasters']);
