@@ -56,10 +56,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/vendors', [APIController::class, 'updateVendor']);
     Route::get('/vendors', [APIController::class, 'getVendorDetails']);
     Route::delete('/vendors', [APIController::class, 'deleteVendor']);
+
     Route::post('/purchase-master', [APIController::class, 'createPurchaseMaster']);
     Route::put('/purchase-master/{id}', [APIController::class, 'updatePurchaseMaster']);
     Route::get('/purchase-master', [APIController::class, 'getPurchaseMasters']);
-    Route::get('/purchase-master/{id}', [APIController::class, 'getPurchaseMasterById']);
-    Route::delete('/purchase-master/{id}', [APIController::class, 'deletePurchaseMaster']);
+    Route::delete('/purchase-master', [APIController::class, 'deletePurchaseMaster']);
+
+    Route::get('/view-products', [APIController::class, 'getAllProducts']);
+    Route::get('/view-reservation-payment', [APIController::class, 'getTableDetails']);
+
+
+    Route::post('/purchase-detail', [APIController::class, 'createPurchaseDetail']);
+    Route::put('/purchase-detail', [APIController::class, 'updatePurchaseDetail']);
+    Route::get('/purchase-detail', [APIController::class, 'getPurchaseDetails']);
+    Route::delete('/purchase-detail', [APIController::class, 'deletePurchaseDetail']);
+
     Route::post('/logout', [APIController::class, 'logout']);
 });

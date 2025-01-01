@@ -14,6 +14,7 @@ class TblProducts extends Model
         'AlternateName',
         'OtherName',
         'Barcode',
+        'BID',
         'CID',
         'SCID',
         'SSCID',

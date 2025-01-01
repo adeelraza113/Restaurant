@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class PurchaseMaster extends Model
 {
     protected $table = 'tblPurchaseMaster';
-
+    public $timestamps = false;
     protected $fillable = [
         'VendorID',
         'InvoiceNo',
@@ -29,5 +29,5 @@ class PurchaseMaster extends Model
         'MachineName'
     ];
 
-    public $timestamps = false;
+   
 }

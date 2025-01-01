@@ -16,6 +16,7 @@ use App\Models\TblSubSubCategory;
 use App\Models\TblProducts;
 use App\Models\TblAllPayments;
 use App\Models\PurchaseMaster;
+use App\Models\PurchaseDetail;
 use App\Models\Vendor;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -168,7 +169,6 @@ class APIController extends Controller
             $user->update(['password' => Hash::make($request->password)]);
             // Delete OTP record
             DB::table('password_resets')->where('email', $request->email)->delete();
-
             return response()->json(['message' => 'Password reset successfully'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to reset password', 'message' => $e->getMessage()], 500);
@@ -726,6 +726,7 @@ public function createBrand(Request $request)
         $validator = Validator::make($request->all(), [
             'ProductCode' => 'required|string|max:255',
             'ProductName' => 'required|string|max:255',
+            'BID' => 'nullable|integer',
             'CID' => 'nullable|integer',
             'SCID' => 'nullable|integer',
             'SSCID' => 'nullable|integer',
@@ -762,6 +763,7 @@ public function createBrand(Request $request)
         $product = TblProducts::create([
             'ProductCode' => $request->ProductCode,
             'ProductName' => $request->ProductName,
+            'BID' => $request->BID,
             'CID' => $request->CID,
             'SCID' => $request->SCID,
             'SSCID' => $request->SSCID,
@@ -780,15 +782,8 @@ public function createBrand(Request $request)
             'AddedDateTime' => Carbon::now(),
         ]);
         return response()->json([
-            'message' => 'Product added successfully',
-            'data' => $product,
-        ], 200);
-    } catch (\Exception $e) {
-        return response()->json([
-            'error' => 'An error occurred while adding the product',
-            'message' => $e->getMessage(),
-        ], 500);
-    }
+            'message' => 'Product added successfully',], 200);
+    } catch (\Exception $e) { return response()->json([ 'error' => 'An error occurred while adding the product', 'message' => $e->getMessage(), ], 500);}
 }
    
 public function updateProduct(Request $request)
@@ -798,6 +793,7 @@ public function updateProduct(Request $request)
             'id' => 'required|integer',
             'ProductCode' => 'nullable|string|max:255',
             'ProductName' => 'nullable|string|max:255',
+            'BID' => 'nullable|integer',
             'CID' => 'nullable|integer',
             'SCID' => 'nullable|integer',
             'SSCID' => 'nullable|integer',
@@ -826,7 +822,7 @@ public function updateProduct(Request $request)
             $product->ImagePath = 'storage/' . $imagePath;
         }
         $fields = [
-            'ProductCode', 'ProductName', 'CID', 'SCID', 'SSCID',
+            'ProductCode', 'ProductName','BID', 'CID', 'SCID', 'SSCID',
             'PurchasedPrice', 'SalePrice1', 'SalePrice2', 'DiscountPercentage',
             'ActiveDiscount', 'ExpiryDate', 'RackNo', 'ReorderLevel', 'Qty',
         ];
@@ -1059,13 +1055,20 @@ public function updateVendor(Request $request)
 public function getVendorDetails(Request $request)
 {
     try {
-        $id = $request->query('id');  
+        $id = $request->query('id');
+        $name = $request->query('VendorName');
+
         if ($id) {
             $vendor = Vendor::findOrFail($id);
             return response()->json(['data' => $vendor], 200);
-        } else {  $vendors = Vendor::all(); return response()->json(['data' => $vendors], 200); }
-    } catch (\Exception $e) { return response()->json(['message' => 'Error fetching vendor data', 'error' => $e->getMessage()], 500); }
+        } elseif ($name) {
+            $vendors = Vendor::where('VendorName', 'LIKE', "%$name%")->get();
+            if ($vendors->isEmpty()) { return response()->json(['message' => 'No vendors found matching the search criteria'], 404);}
+            return response()->json(['data' => $vendors], 200);
+        } else {$vendors = Vendor::all();return response()->json(['data' => $vendors], 200); }
+    } catch (\Exception $e) { return response()->json(['message' => 'Error fetching vendor data', 'error' => $e->getMessage()], 500);}
 }
+
 
 public function deleteVendor(Request $request)
 {
@@ -1123,74 +1126,164 @@ public function createPurchaseMaster(Request $request)
     }
 }
 
-public function updatePurchaseMaster(Request $request, $id)
+public function updatePurchaseMaster(Request $request)
 {
+    $id = $request->query('id');
     $request->validate([
         'VendorID' => 'nullable|integer|exists:tblvendor,id',
         'InvoiceNo' => 'nullable|string|max:255|unique:tblPurchaseMaster,InvoiceNo,' . $id,
-        'BatchNo' => 'nullable|string|max:255',
-        'TotalTax' => 'nullable|numeric|min:0',
-        'TotalDiscount' => 'nullable|numeric|min:0',
-        'TotalAmount' => 'nullable|numeric|min:0',
-        'MasterRemarks' => 'nullable|string',
-        'Lock' => 'nullable|boolean',
-        'IssuedtoStore' => 'nullable|boolean',
-        'InvoiceDate' => 'nullable|date',
-        'ActualDate' => 'nullable|date'
+        'BatchNo' => 'nullable|string|max:255','TotalTax' => 'nullable|numeric|min:0','TotalDiscount' => 'nullable|numeric|min:0',
+        'TotalAmount' => 'nullable|numeric|min:0', 'MasterRemarks' => 'nullable|string','Lock' => 'nullable|boolean',
+        'IssuedtoStore' => 'nullable|boolean','InvoiceDate' => 'nullable|date','ActualDate' => 'nullable|date'
     ]);
-    $user = Auth::user();
-    $userEmail = $user->email;
-    $machineName = gethostname(); 
     try {
         $purchaseMaster = PurchaseMaster::findOrFail($id);
-        $purchaseMaster->update([
-            'VendorID' => $request->input('VendorID', $purchaseMaster->VendorID),
-            'InvoiceNo' => $request->input('InvoiceNo', $purchaseMaster->InvoiceNo),
-            'BatchNo' => $request->input('BatchNo', $purchaseMaster->BatchNo),
-            'TotalTax' => $request->input('TotalTax', $purchaseMaster->TotalTax),
-            'TotalDiscount' => $request->input('TotalDiscount', $purchaseMaster->TotalDiscount),
-            'TotalAmount' => $request->input('TotalAmount', $purchaseMaster->TotalAmount),
-            'MasterRemarks' => $request->input('MasterRemarks', $purchaseMaster->MasterRemarks),
-            'Lock' => $request->input('Lock', $purchaseMaster->Lock),
-            'IssuedtoStore' => $request->input('IssuedtoStore', $purchaseMaster->IssuedtoStore),
-            'InvoiceDate' => $request->input('InvoiceDate', $purchaseMaster->InvoiceDate),
-            'ActualDate' => $request->input('ActualDate', $purchaseMaster->ActualDate),
-            'Updated_By' => $userEmail,
-            'UpdatedDateTime' => Carbon::now(),
-            'MachineName' => $machineName,
+        $purchaseMaster->update(array_merge($request->only([
+            'VendorID', 'InvoiceNo', 'BatchNo', 'TotalTax', 'TotalDiscount', 
+            'TotalAmount', 'MasterRemarks', 'Lock', 'IssuedtoStore', 
+            'InvoiceDate', 'ActualDate'
+        ]), [
+            'Updated_By' => Auth::user()->email,
+            'UpdatedDateTime' => now(),
+            'MachineName' => gethostname(),
             'Revision' => $purchaseMaster->Revision + 1,
-        ]);
+        ]));
         return response()->json(['message' => 'Purchase master updated successfully'], 200);
-    } catch (\Exception $e) {
-        return response()->json([ 'message' => 'Error updating purchase master', 'error' => $e->getMessage() ], 500);
-    }
+    } catch (\Exception $e) { return response()->json(['message' => 'Error updating purchase master', 'error' => $e->getMessage()], 500);}
 }
+
 public function getPurchaseMasters(Request $request)
 {
     try {
+        $id = $request->query('id'); 
+        if ($id) {
+            $purchaseMaster = PurchaseMaster::findOrFail($id);
+            return response()->json($purchaseMaster, 200); }
         $purchaseMasters = PurchaseMaster::all();
         return response()->json($purchaseMasters, 200);
     } catch (\Exception $e) {
-        return response()->json([ 'message' => 'Error fetching purchase masters','error' => $e->getMessage()], 500);}
-}
-public function getPurchaseMasterById($id)
-{
-    try {
-        $purchaseMaster = PurchaseMaster::findOrFail($id);
-        return response()->json($purchaseMaster, 200);
-    } catch (\Exception $e) {
-        return response()->json(['message' => 'Error fetching purchase master', 'error' => $e->getMessage() ], 404);}
+        $statusCode = $id ? 404 : 500; // Set status code based on query
+        return response()->json([ 'message' => 'Error fetching purchase masters','error' => $e->getMessage()], $statusCode);}
 }
 
-public function deletePurchaseMaster($id)
+public function deletePurchaseMaster(Request $request)
 {
     try {
+        $id = $request->query('id'); 
+        if (!$id) {  return response()->json(['message' => 'ID query parameter is required'], 400); }
         $purchaseMaster = PurchaseMaster::findOrFail($id);
         $purchaseMaster->delete();
-         return response()->json([ 'message' => 'Purchase master deleted successfully' ], 200);
-    } catch (\Exception $e) {
-        return response()->json(['message' => 'Error deleting purchase master','error' => $e->getMessage()  ], 404);}
+        return response()->json(['message' => 'Purchase master deleted successfully'], 200);
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {return response()->json(['message' => 'Purchase master not found'], 404);
+    } catch (\Exception $e) {return response()->json(['message' => 'Error deleting purchase master', 'error' => $e->getMessage()], 500);}
 }
 
+public function getAllProducts(Request $request)
+{
+    try {
+        $productID = $request->query('ProductID');
+        if ($productID) {
+            $product = DB::table('viewProducts')->where('ProductID', $productID)->first();
+            if ($product) {
+                return response()->json(['success' => true, 'data' => $product], 200);
+            } else { return response()->json(['success' => false, 'message' => 'Product not found'], 404);}
+        }
+        $products = DB::table('viewProducts')->get();
+        return response()->json(['success' => true, 'data' => $products], 200);
+    } catch (\Exception $e) { return response()->json(['success' => false, 'message' => $e->getMessage()], 500);}
+}
+
+public function createPurchaseDetail(Request $request)
+{
+    $request->validate([
+        'PurchaseMasterID' => 'required|integer|exists:tblpurchasemaster,id',
+        'ProductID' => 'required|integer|exists:tblproducts,id', 'Qty' => 'required|integer|min:1',
+        'UnitPrice' => 'required|numeric|min:0','TaxPercentage' => 'nullable|numeric|min:0|max:100',
+        'TaxPrice' => 'nullable|numeric|min:0','DiscountPercentage' => 'nullable|numeric|min:0|max:100',
+        'DiscountPrice' => 'nullable|numeric|min:0','TotalPrice' => 'required|numeric|min:0','ExpiryDate' => 'nullable|date',
+    ]);
+    $user = Auth::user(); $userEmail = $user->email;$machineName = gethostname(); 
+    try {
+        $purchaseDetail = PurchaseDetail::create([
+            'PurchaseMasterID' => $request->PurchaseMasterID,
+            'ProductID' => $request->ProductID,'Qty' => $request->Qty,
+            'UnitPrice' => $request->UnitPrice,'TaxPercentage' => $request->TaxPercentage,
+            'TaxPrice' => $request->TaxPrice,'DiscountPercentage' => $request->DiscountPercentage,
+            'DiscountPrice' => $request->DiscountPrice,'TotalPrice' => $request->TotalPrice,
+            'ExpiryDate' => $request->ExpiryDate,'Added_By' => $userEmail,
+            'AddedDateTime' => Carbon::now(),  'MachineName' => $machineName,
+        ]);
+        return response()->json(['message' => 'Purchase detail added successfully'], 200);
+    } catch (\Exception $e) {return response()->json(['message' => 'Error adding purchase detail', 'error' => $e->getMessage()], 500);}
+}
+
+public function updatePurchaseDetail(Request $request)
+{
+    $request->validate([
+        'PurchaseMasterID' => 'nullable|integer|exists:tblpurchasemaster,id',
+        'ProductID' => 'nullable|integer|exists:tblproducts,id','Qty' => 'nullable|integer|min:1',
+        'UnitPrice' => 'nullable|numeric|min:0','TaxPercentage' => 'nullable|numeric|min:0|max:100',
+        'TaxPrice' => 'nullable|numeric|min:0','DiscountPercentage' => 'nullable|numeric|min:0|max:100',
+        'DiscountPrice' => 'nullable|numeric|min:0','TotalPrice' => 'nullable|numeric|min:0','ExpiryDate' => 'nullable|date'
+    ]);
+    $user = Auth::user(); $userEmail = $user->email;$machineName = gethostname(); 
+    try {
+        $id = $request->query('id');
+        $purchaseDetail = PurchaseDetail::findOrFail($id);
+        $purchaseDetail->update([
+            'PurchaseMasterID' => $request->input('PurchaseMasterID', $purchaseDetail->PurchaseMasterID),
+            'ProductID' => $request->input('ProductID', $purchaseDetail->ProductID),
+            'Qty' => $request->input('Qty', $purchaseDetail->Qty),
+            'UnitPrice' => $request->input('UnitPrice', $purchaseDetail->UnitPrice),
+            'TaxPercentage' => $request->input('TaxPercentage', $purchaseDetail->TaxPercentage),
+            'TaxPrice' => $request->input('TaxPrice', $purchaseDetail->TaxPrice),
+            'DiscountPercentage' => $request->input('DiscountPercentage', $purchaseDetail->DiscountPercentage),
+            'DiscountPrice' => $request->input('DiscountPrice', $purchaseDetail->DiscountPrice),
+            'TotalPrice' => $request->input('TotalPrice', $purchaseDetail->TotalPrice),
+            'ExpiryDate' => $request->input('ExpiryDate', $purchaseDetail->ExpiryDate),'Updated_By' => $userEmail,
+            'UpdatedDateTime' => Carbon::now(),'MachineName' => $machineName,'Revision' => $purchaseDetail->Revision + 1,
+        ]);
+        return response()->json(['message' => 'Purchase detail updated successfully'], 200);
+    } catch (\Exception $e) {return response()->json(['message' => 'Error updating purchase detail', 'error' => $e->getMessage()], 500); }
+}
+
+public function getPurchaseDetails(Request $request)
+{
+    try {
+        $id = $request->query('id');
+        if ($id) {
+            $purchaseDetail = PurchaseDetail::findOrFail($id);return response()->json($purchaseDetail, 200);
+        } else { $purchaseDetails = PurchaseDetail::all();  return response()->json($purchaseDetails, 200);}
+    } catch (\Exception $e) { return response()->json(['message' => 'Error retrieving purchase details', 'error' => $e->getMessage()], 500);}
+}
+
+public function deletePurchaseDetail(Request $request)
+{
+    try {
+        $id = $request->query('id');
+        $purchaseDetail = PurchaseDetail::findOrFail($id); $purchaseDetail->delete();
+        return response()->json(['message' => 'Purchase detail deleted successfully'], 200);
+    } catch (\Exception $e) { return response()->json(['message' => 'Error deleting purchase detail', 'error' => $e->getMessage()], 500);}
+}
+
+public function getTableDetails(Request $request)
+{
+    try {
+        $request->validate([
+            'ReservationID' => 'nullable|integer', 'UserID' => 'nullable|integer','UserEmail' => 'nullable|email',
+            'TableNo' => 'nullable|integer','isReserved' => 'nullable|integer', 'PaymentStatus' => 'nullable|string',
+        ]);
+        $query = DB::table('viewReservationAndPayment');
+        if ($request->has('ReservationID')) { $query->where('ReservationID', $request->ReservationID);  }
+        if ($request->has('UserID')) { $query->where('UserID', $request->UserID); }
+        if ($request->has('TableNo')) { $query->where('TableNo', $request->TableNo); }
+        if ($request->has('isReserved')) { $query->where('isReserved', $request->isReserved); }
+        if ($request->has('PaymentStatus')) { $query->where('PaymentStatus', $request->PaymentStatus); }
+        if ($request->has('UserEmail')) { $query->where('UserEmail', $request->UserEmail);}
+        $results = $query->get();
+        if ($results->isEmpty()) { return response()->json(['message' => 'No records found'], 404);}
+        return response()->json([ 'message' => 'Table details retrieved successfully', 'data' => $results ], 200);
+    } catch (\Exception $e) { return response()->json(['error' => 'Something went wrong', 'details' => $e->getMessage()], 500); }
+}
 
 }
