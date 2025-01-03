@@ -64,7 +64,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/view-products', [APIController::class, 'getAllProducts']);
     Route::get('/view-reservation-payment', [APIController::class, 'getTableDetails']);
-
+    Route::get('/view-purchases', [APIController::class, 'getPurchases']);
 
     Route::post('/purchase-detail', [APIController::class, 'createPurchaseDetail']);
     Route::put('/purchase-detail', [APIController::class, 'updatePurchaseDetail']);

@@ -1286,4 +1286,23 @@ public function getTableDetails(Request $request)
     } catch (\Exception $e) { return response()->json(['error' => 'Something went wrong', 'details' => $e->getMessage()], 500); }
 }
 
+public function getPurchases(Request $request)
+    {
+        try {
+            $purchaseMasterID = $request->query('PurchaseMasterID');
+            $vendorName = $request->query('VendorName');
+            $invoiceNo = $request->query('InvoiceNo');
+            $startDate = $request->query('StartDate'); 
+            $endDate = $request->query('EndDate');
+            $query = DB::table('viewPurchase');
+            if ($purchaseMasterID) {$query->where('PurchaseMasterID', $purchaseMasterID);}
+            if ($vendorName) { $query->where('VendorName', 'like', "%$vendorName%");}
+            if ($invoiceNo) { $query->where('InvoiceNo', 'like', "%$invoiceNo%");}
+            if ($startDate && $endDate) { $query->whereBetween('ActualDate', [$startDate, $endDate]); }
+            $purchases = $query->get();
+            return response()->json(['status' => 'success','data' => $purchases,], 200);
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error','message' => $e->getMessage(), ], 500);}
+}
+
 }
