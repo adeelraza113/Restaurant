@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
+
 use Illuminate\Http\Request;
+use App\Models\User;
 use App\Models\TblTableType;
 use App\Models\TblSittingTableS;
 use App\Models\TblTablePaymentPlan;
@@ -18,13 +19,18 @@ use App\Models\TblAllPayments;
 use App\Models\PurchaseMaster;
 use App\Models\PurchaseDetail;
 use App\Models\Vendor;
+use App\Mail\SendOtpMail;
+
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 use Exception;
 use Carbon\Carbon;
+
 
 class APIController extends Controller
 {
@@ -43,7 +49,7 @@ class APIController extends Controller
                 'password' => Hash::make($request->password),
             ]);
             $token = $user->createToken('auth_token')->plainTextToken;
-            return response()->json([
+            return response()->json(['status' => 'success',
                 'message' => 'User registered successfully'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to register user', 'message' => $e->getMessage()], 500);
@@ -70,7 +76,7 @@ class APIController extends Controller
         }
         // Create the token
         $token = $user->createToken('auth_token')->plainTextToken;
-        return response()->json(['message' => 'Login successful','token' => $token,], 200);
+        return response()->json(['status' => 'success','message' => 'Login successful','token' => $token,], 200);
     } catch (\Exception $e) {
         return response()->json(['error' => 'Login failed','message' => $e->getMessage(),], 500);
     }
@@ -106,7 +112,7 @@ class APIController extends Controller
         $user->food_preference = $request->food_preference ?? $user->food_preference;
         $user->save();
 
-        return response()->json(['message' => 'Profile updated successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'Profile updated successfully'], 200);
     } catch (\Exception $e) {
         // Log the error
         \Log::error('Update Profile Error: ' . $e->getMessage());
@@ -119,34 +125,49 @@ class APIController extends Controller
         try {
             $request->user()->tokens()->delete();
 
-            return response()->json(['message' => 'Logged out successfully'], 200);
+            return response()->json(['status' => 'success','message' => 'Logged out successfully'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to log out', 'message' => $e->getMessage()], 500);
         }
     }
 
-    public function generateOtp(Request $request)
-    {
-        try {
-            $validator = Validator::make($request->all(), [
-                'email' => 'required|email|exists:users,email',
-            ]);
-            if ($validator->fails()) {
-                return response()->json(['errors' => $validator->errors()], 400);
-            }
-            $otp = rand(100000, 999999); // Generate a 6-digit OTP
-            $expiresAt = Carbon::now()->addMinutes(10);
-            // Store OTP in database (or cache)
-            DB::table('password_resets')->updateOrInsert(
-                ['email' => $request->email],
-                ['otp' => $otp, 'expires_at' => $expiresAt]
-            );
-            // In production, send the OTP via SMS or Email
-            return response()->json(['message' => 'OTP generated successfully', 'otp' => $otp], 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to generate OTP', 'message' => $e->getMessage()], 500);
+public function generateOtp(Request $request)
+{
+    try {
+        // Validate the request
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email|exists:users,email',
+        ]);
+        if ($validator->fails()) {
+            Log::warning('Validation failed', ['errors' => $validator->errors()->toArray()]);
+            return response()->json(['errors' => $validator->errors()], 400);
         }
+
+        // Generate a 6-digit OTP
+        $otp = rand(100000, 999999);
+        $expiresAt = Carbon::now()->addMinutes(10);
+
+        // Store OTP in database (or cache)
+        DB::table('password_resets')->updateOrInsert(
+            ['email' => $request->email],
+            ['otp' => $otp, 'expires_at' => $expiresAt]
+        );
+
+        // Send the OTP email
+        try {
+            Mail::to($request->email)->send(new SendOtpMail($otp));
+            Log::info('OTP generated and email sent', ['email' => $request->email, 'otp' => $otp]);
+        } catch (\Exception $e) {
+            Log::error('Failed to send OTP email', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return response()->json(['error' => 'Failed to send OTP email', 'message' => $e->getMessage()], 500);
+        }
+
+        return response()->json(['status' => 'success', 'message' => 'OTP generated successfully', 'otp' => $otp], 200);
+    } catch (\Exception $e) {
+        Log::error('Failed to generate OTP', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+        return response()->json(['error' => 'Failed to generate OTP', 'message' => $e->getMessage()], 500);
     }
+}
 
     public function resetPasswordWithOtp(Request $request)
     {
@@ -169,7 +190,7 @@ class APIController extends Controller
             $user->update(['password' => Hash::make($request->password)]);
             // Delete OTP record
             DB::table('password_resets')->where('email', $request->email)->delete();
-            return response()->json(['message' => 'Password reset successfully'], 200);
+            return response()->json(['status' => 'success','message' => 'Password reset successfully'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to reset password', 'message' => $e->getMessage()], 500);
         }
@@ -188,7 +209,7 @@ class APIController extends Controller
                 'Table_Type' => $request->Table_Type,
                 'Added_By' =>  $userEmail,
             ]);
-            return response()->json(['message' => 'Table Type added successfully'], 200);
+            return response()->json(['status' => 'success','message' => 'Table Type added successfully'], 200);
         } catch (\Exception $e) {
             return response()->json(['message' => 'Error adding Table Type', 'error' => $e->getMessage()], 500);
         }
@@ -222,9 +243,9 @@ class APIController extends Controller
                     'error' => 'Failed to fetch image from the URL',], 400); }
             // Generate a unique name for the image
             $imageName = time() . '_' . uniqid() . '.png'; // Adjust the extension as needed
-            $imagePath = 'images/' . $imageName;
+            $imagePath = $imageName;
             Storage::disk('public')->put($imagePath, $imageContent);
-            $sittingTable = tblSittingTables::create([
+            $sittingTable = tblsittingtables::create([
                 'TableName' => $request->TableName,
                 'TableNo' => $request->TableNo,
                 'SittingCapacity' => $request->SittingCapacity,
@@ -232,11 +253,10 @@ class APIController extends Controller
                 'TableTypeID' => $request->TableTypeID,
                 'Added_By' => Auth::user()->email,
                 'ImageName' => $request->ImageName,
-                'ImagePath' => 'storage/' . $imagePath, // Save the image path to the database
+                'ImagePath' => $imagePath, // Save the image path to the database
                 'Revision' => 0,
             ]);
-            return response()->json([
-                'message' => 'Sitting Table created successfully','data' => $sittingTable, ], 200);
+            return response()->json(['status' => 'success','message' => 'Sitting Table created successfully','data' => $sittingTable, ], 200);
         } catch (Exception $e) {
             return response()->json([
                 'error' => 'An error occurred while creating the sitting table',
@@ -249,7 +269,7 @@ class APIController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'SittingTableID' => 'required|integer|exists:tblSittingTableS,id',
+                'SittingTableID' => 'required|integer|exists:tblsittingtables,id',
                 'PricePerHour' => 'required|numeric|min:0',
                 'PricePerExtraSeat' => 'required|numeric|min:0',
                 'Discount' => 'nullable|numeric|min:0|max:100',
@@ -266,7 +286,7 @@ class APIController extends Controller
                 'Discount'=> $request->Discount,
                 'Added_By' => $userEmail, 
         ]);
-            return response()->json(['message' => 'Payment plan created successfully'], 200);
+            return response()->json(['status' => 'success','message' => 'Payment plan created successfully'], 200);
         } catch (Exception $e) {
             return response()->json(['error' => 'An error occurred while creating the payment plan', 'details' => $e->getMessage()], 500);
         }
@@ -277,9 +297,9 @@ class APIController extends Controller
         try {
             $validator = Validator::make($request->all(), [
                 'UserID' => 'required|integer|exists:users,id',
-                'SittingTableID' => 'required|integer|exists:tblSittingTableS,id',
+                'SittingTableID' => 'required|integer|exists:tblsittingtables,id',
                 'SittingPlan' => 'required|integer',
-                'ReservationNumber' => 'required|string|max:50|unique:tblTableReservation,ReservationNumber',
+                'ReservationNumber' => 'required|string|max:50|unique:tbltablereservation,ReservationNumber',
                 'StartTime' => 'required|date',
                 'EndTime' => 'required|date|after:StartTime',
                 'ExtendedTime' => 'nullable|date|after:EndTime',
@@ -299,7 +319,7 @@ class APIController extends Controller
                 'ExtendedTime'=> $request->ExtendedTime,
                 'Added_By' => $userEmail, 
             ]);
-            return response()->json(['message' => 'Reservation created successfully'], 200);
+            return response()->json(['status' => 'success','message' => 'Reservation created successfully'], 200);
         } catch (Exception $e) {
             return response()->json(['error' => 'An error occurred while creating the reservation', 'details' => $e->getMessage()], 500);
         }
@@ -321,50 +341,88 @@ class APIController extends Controller
                 'UpdatedDateTime' => Carbon::now(),
                 'Revision' => $tableType->Revision + 1,
             ]);
-            return response()->json(['message' => 'Table Type updated successfully'], 200);
+            return response()->json(['status' => 'success','message' => 'Table Type updated successfully'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to update Table Type', 'details' => $e->getMessage()], 500);
         }
     }
     
-    public function updateSittingTable(Request $request)
-    {
-        try {
-            $user = Auth::user();
-            $userEmail = $user->email;
-            $id = $request->query('id');
-            $sittingTable = TblSittingTableS::findOrFail($id);
-            $updateData = [];
-            if ($request->has('TableName')) {
-                $updateData['TableName'] = $request->input('TableName');
-            }
-            if ($request->has('TableNo')) {
-                $updateData['TableNo'] = $request->input('TableNo');
-            }
-            if ($request->has('SittingCapacity')) {
-                $updateData['SittingCapacity'] = $request->input('SittingCapacity');
-            }
-            if ($request->has('SittingPlan')) {
-                $updateData['SittingPlan'] = $request->input('SittingPlan');
-            }
-            if ($request->has('TableTypeID')) {
-                $updateData['TableTypeID'] = $request->input('TableTypeID');
-            }
-            if ($request->has('isReserved')) {
-                $updateData['isReserved'] = (int)$request->input('isReserved');
-            }
-            if ($request->has('show')) {
-                $updateData['show'] = (int)$request->input('show');
-            }
-            $updateData['Updated_By'] = $userEmail;
-            $updateData['UpdatedDateTime'] = Carbon::now();
-            $updateData['Revision'] = $sittingTable->Revision + 1;
-            $sittingTable->update($updateData);
-            return response()->json(['message' => 'Sitting Table updated successfully'], 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to update Sitting Table', 'details' => $e->getMessage()], 500);
+  public function updateSittingTable(Request $request)
+{
+    try {
+        $user = Auth::user();
+        $userEmail = $user->email;
+        $id = $request->query('id');
+        $sittingTable = TblSittingTableS::findOrFail($id);
+
+        $updateData = [];
+
+        if ($request->has('TableName')) {
+            $updateData['TableName'] = $request->input('TableName');
         }
+        if ($request->has('TableNo')) {
+            $updateData['TableNo'] = $request->input('TableNo');
+        }
+        if ($request->has('SittingCapacity')) {
+            $updateData['SittingCapacity'] = $request->input('SittingCapacity');
+        }
+        if ($request->has('SittingPlan')) {
+            $updateData['SittingPlan'] = $request->input('SittingPlan');
+        }
+        if ($request->has('TableTypeID')) {
+            $updateData['TableTypeID'] = $request->input('TableTypeID');
+        }
+        if ($request->has('isReserved')) {
+            $updateData['isReserved'] = (int) $request->input('isReserved');
+        }
+        if ($request->has('show')) {
+            $updateData['show'] = (int) $request->input('show');
+        }
+        
+        // Handle image update
+        if ($request->has('Image') && $request->has('ImageName')) {
+            $imageUrl = $request->Image;
+
+            // Fetch the image from the provided URL
+            $imageContent = file_get_contents($imageUrl);
+            if ($imageContent === false) {
+                return response()->json(['error' => 'Failed to fetch image from the URL'], 400);
+            }
+
+            // Generate a unique name for the image
+            $imageName = time() . '_' . uniqid() . '.png'; // Adjust the extension if needed
+            $imagePath = $imageName;
+
+            // Store the new image
+            Storage::disk('public')->put($imagePath, $imageContent);
+
+            // Delete the old image if necessary
+            if (!empty($sittingTable->ImagePath)) {
+                Storage::disk('public')->delete($sittingTable->ImagePath);
+            }
+
+            $updateData['ImageName'] = $request->ImageName;
+            $updateData['ImagePath'] = $imagePath;
+        }
+
+        $updateData['Updated_By'] = $userEmail;
+        $updateData['UpdatedDateTime'] = Carbon::now();
+        $updateData['Revision'] = $sittingTable->Revision + 1;
+
+        $sittingTable->update($updateData);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Sitting Table updated successfully',
+        ], 200);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'Failed to update Sitting Table',
+            'details' => $e->getMessage()
+        ], 500);
     }
+}
+
     
  public function updatePaymentPlan(Request $request)
     {
@@ -384,7 +442,7 @@ class APIController extends Controller
             $fieldsToUpdate['UpdatedDateTime'] = Carbon::now();
             $fieldsToUpdate['Revision'] = $paymentPlan->Revision + 1;
             $paymentPlan->update($fieldsToUpdate);
-            return response()->json(['message' => 'Payment Plan updated successfully'], 200);
+            return response()->json(['status' => 'success','message' => 'Payment Plan updated successfully'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to update Payment Plan', 'details' => $e->getMessage()], 500);
         }
@@ -408,7 +466,7 @@ class APIController extends Controller
             $fieldsToUpdate['UpdatedDateTime'] = Carbon::now();
             $fieldsToUpdate['Revision'] = $reservation->Revision + 1;
             $reservation->update($fieldsToUpdate);
-            return response()->json(['message' => 'Reservation updated successfully'], 200);
+            return response()->json(['status' => 'success','message' => 'Reservation updated successfully'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to update Reservation', 'details' => $e->getMessage()], 500);
         }
@@ -478,25 +536,54 @@ public function getTablesByReservationStatus(Request $request)
 {
     try {
         $status = $request->query('status');
-        $data = $request->query('data'); 
+        $data = $request->query('data');
+
+        // Validate status parameter
         if (!in_array($status, ['all', '1', '0'])) {
-            return response()->json(['error' => 'Invalid status parameter. Use "all", "1", or "0".'], 400); }
+            return response()->json(['error' => 'Invalid status parameter. Use "all", "1", or "0".'], 400);
+        }
+
+        // Query tables
         $query = TblSittingTableS::query();
-        if ($status !== 'all') {$query->where('isReserved', $status === '1' ? 1 : 0);}
-        if ($data) {   $query->where('data', $data);}
-        $tables = $query->get();
+        if ($status !== 'all') {
+            $query->where('isReserved', $status === '1' ? 1 : 0);
+        }
+        if ($data) {
+            $query->where('data', $data);
+        }
+
+        // Fetch tables and format response with full image URL
+        $tables = $query->get()->map(function ($table) {
+            return [
+                'id' => $table->id,
+                'TableName' => $table->TableName,
+                'TableNo' => $table->TableNo,
+                'SittingCapacity' => $table->SittingCapacity,
+                'SittingPlan' => $table->SittingPlan,
+                'TableTypeID' => $table->TableTypeID,
+                'isReserved' => $table->isReserved,
+                'ImagePath' => !empty($table->ImagePath) ? Storage::disk('public')->url($table->ImagePath) : null,
+                'Added_By' => $table->Added_By,
+                'Revision' => $table->Revision,
+            ];
+        });
+
         if ($tables->isEmpty()) {
             return response()->json(['message' => 'No tables found for the given criteria.'], 404);
         }
-        return response()->json(['data' => $tables], 200); } 
-        catch (\Exception $e) { return response()->json(['error' => 'Failed to fetch tables', 'details' => $e->getMessage()], 500);}
+
+        return response()->json(['status' => 'success', 'data' => $tables], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to fetch tables', 'details' => $e->getMessage()], 500);
+    }
 }
+
 
 public function createReservationPayment(Request $request)
 {
     try {
         $validatedData = $request->validate([
-            'ReservationID' => 'required|exists:tblTableReservation,id',
+            'ReservationID' => 'required|exists:tbltablereservation,id',
             'ActualPrice' => 'required|numeric',
             'ExtraSeatPrice' => 'required|numeric',
             'ExtendedTimePrice' => 'required|numeric',
@@ -509,7 +596,7 @@ public function createReservationPayment(Request $request)
         ]);
         $validatedData['Added_By'] = auth()->user()->email;
         ReservationPayment::create($validatedData);
-        return response()->json(['message' => 'Reservation Payment created successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'Reservation Payment created successfully'], 200);
     } catch (\Exception $e) {
         return response()->json(['error' => $e->getMessage()], 400);
     }
@@ -541,7 +628,7 @@ public function updateReservationPayment(Request $request)
         $reservationPayment->UpdatedDateTime = now();
         $reservationPayment->revision += 1;
         $reservationPayment->save();
-        return response()->json(['message' => 'Reservation payment record updated successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'Reservation payment record updated successfully'], 200);
     } catch (\Exception $e) {
         return response()->json(['message' => 'Error updating reservation payment record', 'error' => $e->getMessage()], 500);
     }
@@ -560,7 +647,7 @@ public function getReservationPayment(Request $request)
             return response()->json(['data' => $reservationPayment], 200);
         }
         $reservationPayments = ReservationPayment::all();
-        return response()->json(['data' => $reservationPayments], 200);
+        return response()->json(['status' => 'success','data' => $reservationPayments], 200);
     } catch (\Exception $e) {
         return response()->json(['message' => 'Error retrieving reservation payments', 'error' => $e->getMessage()], 500);
     }
@@ -591,7 +678,7 @@ public function createBrand(Request $request)
                 'Added_By' => $userEmail,
                 'AddedDateTime' => Carbon::now(),
             ]);
-            return response()->json(['message' => 'Brand created successfully'], 200);
+            return response()->json(['status' => 'success','message' => 'Brand created successfully'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to create brand', 'details' => $e->getMessage()], 500);
         }
@@ -610,7 +697,7 @@ public function createBrand(Request $request)
             'UpdatedDateTime' => Carbon::now(),
             'Revision' => $brand->Revision + 1,
         ]);
-        return response()->json(['message' => 'Brand updated successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'Brand updated successfully'], 200);
     } catch (\Exception $e) {
         return response()->json(['error' => 'Failed to update brand', 'details' => $e->getMessage()], 500);
     }
@@ -629,7 +716,7 @@ public function createBrand(Request $request)
                 'Added_By' => $userEmail,
                 'AddedDateTime' => Carbon::now(),
             ]);
-            return response()->json(['message' => 'Category created successfully'], 201);
+            return response()->json(['status' => 'success','message' => 'Category created successfully'], 201);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to create category', 'details' => $e->getMessage()], 500);
         }
@@ -645,7 +732,7 @@ public function createBrand(Request $request)
             'CategoryName' => $request->input('CategoryName', $category->CategoryName),
             'Updated_By' => $userEmail,'UpdatedDateTime' => now(),'Revision' => $category->Revision + 1,
         ]);
-        return response()->json(['message' => 'Category updated successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'Category updated successfully'], 200);
     } catch (\Exception $e) {
         return response()->json(['error' => 'Failed to update category', 'details' => $e->getMessage()], 500);
     }
@@ -662,7 +749,7 @@ public function createBrand(Request $request)
                 'Added_By' => $userEmail,
                 'AddedDateTime' => Carbon::now(),
             ]);
-            return response()->json(['message' => 'SubCategory created successfully'], 201);
+            return response()->json(['status' => 'success','message' => 'SubCategory created successfully'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to create sub-category', 'details' => $e->getMessage()], 500);
         }
@@ -679,7 +766,7 @@ public function createBrand(Request $request)
             'SubCategoryName' => $request->input('SubCategoryName', $subCategory->SubCategoryName),
             'Updated_By' => $userEmail,'UpdatedDateTime' => Carbon::now(),  'Revision' => $subCategory->Revision + 1,
         ]);
-        return response()->json(['message' => 'SubCategory updated successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'SubCategory updated successfully'], 200);
     } catch (\Exception $e) {
         return response()->json(['error' => 'Failed to update sub-category', 'details' => $e->getMessage()], 500);
     }
@@ -697,7 +784,7 @@ public function createBrand(Request $request)
                 'Added_By' => $userEmail,
                 'AddedDateTime' => Carbon::now(),
             ]);
-            return response()->json(['message' => 'SubSubCategory created successfully'], 200);
+            return response()->json(['status' => 'success','message' => 'SubSubCategory created successfully'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to create sub-sub-category', 'details' => $e->getMessage()], 500);
         }
@@ -713,7 +800,7 @@ public function createBrand(Request $request)
             'SubSubCategoryName' => $request->input('SubSubCategoryName', $subSubCategory->SubSubCategoryName),
             'Updated_By' => $userEmail,'UpdatedDateTime' => Carbon::now(), 'Revision' => $subSubCategory->Revision + 1,
         ]);
-        return response()->json(['message' => 'SubSubCategory updated successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'SubSubCategory updated successfully'], 200);
     } catch (\Exception $e) {
         return response()->json(['error' => 'Failed to update sub-sub-category', 'details' => $e->getMessage()], 500);
     }
@@ -758,7 +845,7 @@ public function createBrand(Request $request)
             ], 400);
         }
         $imageName = time() . '_' . uniqid() . '.png'; // Adjust the extension as needed
-        $imagePath = 'images/' . $imageName;
+        $imagePath = $imageName;
         Storage::disk('public')->put($imagePath, $imageContent);
         $product = TblProducts::create([
             'ProductCode' => $request->ProductCode,
@@ -777,12 +864,11 @@ public function createBrand(Request $request)
             'ReorderLevel' => $request->ReorderLevel,
             'Qty' => $request->Qty,
             'ImageName' => $request->ImageName,
-            'ImagePath' => 'storage/' . $imagePath, // Save the image path in the database
+            'ImagePath' => $imagePath,
             'Added_By' => Auth::user()->email,
             'AddedDateTime' => Carbon::now(),
         ]);
-        return response()->json([
-            'message' => 'Product added successfully',], 200);
+        return response()->json(['status' => 'success','message' => 'Product added successfully',], 200);
     } catch (\Exception $e) { return response()->json([ 'error' => 'An error occurred while adding the product', 'message' => $e->getMessage(), ], 500);}
 }
    
@@ -816,10 +902,10 @@ public function updateProduct(Request $request)
             $imageContent = @file_get_contents($request->ImagePath);
             if ($imageContent === false) { return response()->json(['error' => 'Failed to fetch image from the URL'], 400);}
             $imageName = time() . '_' . uniqid() . '.png';
-            $imagePath = 'images/' . $imageName;
+            $imagePath = $imageName;
             Storage::disk('public')->put($imagePath, $imageContent);
             $product->ImageName = $request->ImageName ?? $product->ImageName;
-            $product->ImagePath = 'storage/' . $imagePath;
+            $product->ImagePath = $imagePath;
         }
         $fields = [
             'ProductCode', 'ProductName','BID', 'CID', 'SCID', 'SSCID',
@@ -829,7 +915,7 @@ public function updateProduct(Request $request)
         foreach ($fields as $field) { if ($request->has($field)) { $product->$field = $request->$field;}}
         $product->Updated_By = Auth::user()->email;
         $product->save();
-        return response()->json(['message' => 'Product updated successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'Product updated successfully'], 200);
     } catch (\Exception $e) { return response()->json(['error' => 'An error occurred while updating the product', 'message' => $e->getMessage()], 500);}
 }
 
@@ -840,10 +926,10 @@ public function searchProducts(Request $request)
         if ($query) {
             $products = TblProducts::where('ProductName', 'LIKE', "%$query%")->get();
             if ($products->isEmpty()) { return response()->json(['message' => 'No products found matching the search criteria'], 404); }
-            return response()->json(['products' => $products], 200);
+            return response()->json(['status' => 'success','data' => $products], 200);
         } else {
             $products = TblProducts::all();
-            return response()->json(['products' => $products], 200); }
+            return response()->json(['status' => 'success','data' => $products], 200); }
     } catch (\Exception $e) {return response()->json(['error' => 'Failed to fetch products', 'details' => $e->getMessage()], 500); }
 }
 
@@ -937,7 +1023,7 @@ public function createAllPayment(Request $request)
             'Added_By' => $userEmail,
             'MachineName' => $machineName,
         ]);
-        return response()->json(['message' => 'Payment record added successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'Payment record added successfully'], 200);
     } catch (\Exception $e) {
         return response()->json(['message' => 'Error adding payment record', 'error' => $e->getMessage()], 500);
     }
@@ -963,7 +1049,7 @@ public function updateAllPayment(Request $request)
             'MachineName' => $request->input('MachineName', $allPayment->MachineName),
             'Revision' => $allPayment->Revision + 1,
         ]);
-        return response()->json(['message' => 'Payment record updated successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'Payment record updated successfully'], 200);
     } catch (\Exception $e) { return response()->json(['message' => 'Error updating payment record', 'error' => $e->getMessage()], 500);}
 }
 
@@ -974,9 +1060,9 @@ public function getAllPayments(Request $request)
         $id = $request->query('id');
         if ($id) {
              $allPayment = TblAllPayments::findOrFail($id);
-            return response()->json(['message' => 'Payment record fetched successfully', 'data' => $allPayment], 200); }
+            return response()->json(['status' => 'success', 'data' => $allPayment], 200); }
         $allPayments = TblAllPayments::all();
-        return response()->json(['message' => 'All payment records fetched successfully', 'data' => $allPayments], 200);
+        return response()->json(['status' => 'success', 'data' => $allPayments], 200);
     } catch (\Exception $e) {return response()->json(['message' => 'Error fetching payment records', 'error' => $e->getMessage()], 500);}
 }
 
@@ -997,7 +1083,7 @@ public function createVendor(Request $request)
 {
     $request->validate([
         'VendorName' => 'required|string|max:255',
-        'Email' => 'nullable|email|unique:tblVendor,Email',
+        'Email' => 'nullable|email|unique:tblvendor,Email',
         'Contact' => 'nullable|string|max:20',
         'Address' => 'nullable|string',
         'Fax' => 'nullable|string|max:50'
@@ -1016,7 +1102,7 @@ public function createVendor(Request $request)
             'AddedDateTime' => Carbon::now(),
             'MachineName' =>  $machineName
         ]);
-        return response()->json(['message' => 'Vendor added successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'Vendor added successfully'], 200);
     } catch (\Exception $e) {
         return response()->json(['message' => 'Error adding vendor','error' => $e->getMessage(),], 500);
     }
@@ -1048,7 +1134,7 @@ public function updateVendor(Request $request)
             'MachineName' => $machineName,
             'Revision' => $vendor->Revision + 1,
         ]);
-        return response()->json(['message' => 'Vendor updated successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'Vendor updated successfully'], 200);
     } catch (\Exception $e) { return response()->json(['message' => 'Error updating vendor', 'error' => $e->getMessage()], 500); }
 }
 
@@ -1060,11 +1146,11 @@ public function getVendorDetails(Request $request)
 
         if ($id) {
             $vendor = Vendor::findOrFail($id);
-            return response()->json(['data' => $vendor], 200);
+            return response()->json(['status' => 'success','data' => $vendor], 200);
         } elseif ($name) {
             $vendors = Vendor::where('VendorName', 'LIKE', "%$name%")->get();
             if ($vendors->isEmpty()) { return response()->json(['message' => 'No vendors found matching the search criteria'], 404);}
-            return response()->json(['data' => $vendors], 200);
+            return response()->json(['status' => 'success','data' => $vendors], 200);
         } else {$vendors = Vendor::all();return response()->json(['data' => $vendors], 200); }
     } catch (\Exception $e) { return response()->json(['message' => 'Error fetching vendor data', 'error' => $e->getMessage()], 500);}
 }
@@ -1087,7 +1173,7 @@ public function createPurchaseMaster(Request $request)
 {
     $request->validate([
         'VendorID' => 'required|integer|exists:tblvendor,id',
-        'InvoiceNo' => 'required|string|max:255|unique:tblPurchaseMaster,InvoiceNo',
+        'InvoiceNo' => 'required|string|max:255|unique:tblpurchasemaster,InvoiceNo',
         'BatchNo' => 'nullable|string|max:255',
         'TotalTax' => 'nullable|numeric|min:0',
         'TotalDiscount' => 'nullable|numeric|min:0',
@@ -1119,7 +1205,7 @@ public function createPurchaseMaster(Request $request)
             'AddedDateTime' => Carbon::now(),
             'MachineName' => $machineName
         ]);
-        return response()->json(['message' => 'Purchase master added successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'Purchase master added successfully'], 200);
     } catch (\Exception $e) {
         return response()->json([
             'message' => 'Error adding purchase master','error' => $e->getMessage() ], 500);
@@ -1148,7 +1234,7 @@ public function updatePurchaseMaster(Request $request)
             'MachineName' => gethostname(),
             'Revision' => $purchaseMaster->Revision + 1,
         ]));
-        return response()->json(['message' => 'Purchase master updated successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'Purchase master updated successfully'], 200);
     } catch (\Exception $e) { return response()->json(['message' => 'Error updating purchase master', 'error' => $e->getMessage()], 500);}
 }
 
@@ -1160,7 +1246,7 @@ public function getPurchaseMasters(Request $request)
             $purchaseMaster = PurchaseMaster::findOrFail($id);
             return response()->json($purchaseMaster, 200); }
         $purchaseMasters = PurchaseMaster::all();
-        return response()->json($purchaseMasters, 200);
+        return response()->json(['status' => 'success','data'=>$purchaseMasters], 200);
     } catch (\Exception $e) {
         $statusCode = $id ? 404 : 500; // Set status code based on query
         return response()->json([ 'message' => 'Error fetching purchase masters','error' => $e->getMessage()], $statusCode);}
@@ -1176,21 +1262,6 @@ public function deletePurchaseMaster(Request $request)
         return response()->json(['message' => 'Purchase master deleted successfully'], 200);
     } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {return response()->json(['message' => 'Purchase master not found'], 404);
     } catch (\Exception $e) {return response()->json(['message' => 'Error deleting purchase master', 'error' => $e->getMessage()], 500);}
-}
-
-public function getAllProducts(Request $request)
-{
-    try {
-        $productID = $request->query('ProductID');
-        if ($productID) {
-            $product = DB::table('viewProducts')->where('ProductID', $productID)->first();
-            if ($product) {
-                return response()->json(['success' => true, 'data' => $product], 200);
-            } else { return response()->json(['success' => false, 'message' => 'Product not found'], 404);}
-        }
-        $products = DB::table('viewProducts')->get();
-        return response()->json(['success' => true, 'data' => $products], 200);
-    } catch (\Exception $e) { return response()->json(['success' => false, 'message' => $e->getMessage()], 500);}
 }
 
 public function createPurchaseDetail(Request $request)
@@ -1213,7 +1284,7 @@ public function createPurchaseDetail(Request $request)
             'ExpiryDate' => $request->ExpiryDate,'Added_By' => $userEmail,
             'AddedDateTime' => Carbon::now(),  'MachineName' => $machineName,
         ]);
-        return response()->json(['message' => 'Purchase detail added successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'Purchase detail added successfully'], 200);
     } catch (\Exception $e) {return response()->json(['message' => 'Error adding purchase detail', 'error' => $e->getMessage()], 500);}
 }
 
@@ -1243,7 +1314,7 @@ public function updatePurchaseDetail(Request $request)
             'ExpiryDate' => $request->input('ExpiryDate', $purchaseDetail->ExpiryDate),'Updated_By' => $userEmail,
             'UpdatedDateTime' => Carbon::now(),'MachineName' => $machineName,'Revision' => $purchaseDetail->Revision + 1,
         ]);
-        return response()->json(['message' => 'Purchase detail updated successfully'], 200);
+        return response()->json(['status' => 'success','message' => 'Purchase detail updated successfully'], 200);
     } catch (\Exception $e) {return response()->json(['message' => 'Error updating purchase detail', 'error' => $e->getMessage()], 500); }
 }
 
@@ -1266,6 +1337,21 @@ public function deletePurchaseDetail(Request $request)
     } catch (\Exception $e) { return response()->json(['message' => 'Error deleting purchase detail', 'error' => $e->getMessage()], 500);}
 }
 
+public function getAllProducts(Request $request)
+{
+    try {
+        $productID = $request->query('ProductID');
+        if ($productID) {
+            $product = DB::table('viewProducts')->where('ProductID', $productID)->first();
+            if ($product) {
+                return response()->json(['status'=>'success', 'data' => $product], 200);
+            } else { return response()->json(['success' => false, 'message' => 'Product not found'], 404);}
+        }
+        $products = DB::table('viewProducts')->get();
+        return response()->json(['status' => 'success', 'data' => $products], 200);
+    } catch (\Exception $e) { return response()->json(['success' => false, 'message' => $e->getMessage()], 500);}
+}
+
 public function getTableDetails(Request $request)
 {
     try {
@@ -1282,7 +1368,7 @@ public function getTableDetails(Request $request)
         if ($request->has('UserEmail')) { $query->where('UserEmail', $request->UserEmail);}
         $results = $query->get();
         if ($results->isEmpty()) { return response()->json(['message' => 'No records found'], 404);}
-        return response()->json([ 'message' => 'Table details retrieved successfully', 'data' => $results ], 200);
+        return response()->json([ 'status' => 'success', 'data' => $results ], 200);
     } catch (\Exception $e) { return response()->json(['error' => 'Something went wrong', 'details' => $e->getMessage()], 500); }
 }
 
@@ -1294,7 +1380,7 @@ public function getPurchases(Request $request)
             $invoiceNo = $request->query('InvoiceNo');
             $startDate = $request->query('StartDate'); 
             $endDate = $request->query('EndDate');
-            $query = DB::table('viewPurchase');
+            $query = DB::table('viewpurchase');
             if ($purchaseMasterID) {$query->where('PurchaseMasterID', $purchaseMasterID);}
             if ($vendorName) { $query->where('VendorName', 'like', "%$vendorName%");}
             if ($invoiceNo) { $query->where('InvoiceNo', 'like', "%$invoiceNo%");}
