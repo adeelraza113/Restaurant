@@ -34,55 +34,69 @@ use Carbon\Carbon;
 
 class APIController extends Controller
 {
-    public function register(Request $request)
-    {
-        try {
-            $validator = Validator::make($request->all(), [
-                'email' => 'required|email|unique:users',
-                'password' => 'required|confirmed|min:6',
-            ]);
-            if ($validator->fails()) {
-                return response()->json(['errors' => $validator->errors()], 400);
-            }
-            $user = User::create([
-                'email' => $request->email,
-                'password' => Hash::make($request->password),
-            ]);
-            $token = $user->createToken('auth_token')->plainTextToken;
-            return response()->json(['status' => 'success',
-                'message' => 'User registered successfully'], 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to register user', 'message' => $e->getMessage()], 500);
-        }
-    }
-
-    public function login(Request $request)
+   public function register(Request $request)
 {
     try {
-        // Validate the input
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email|unique:users',
+            'password' => 'required|confirmed|min:6',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 400);
+        }
+        $user = User::create([
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+        ]);
+        $token = $user->createToken('auth_token')->plainTextToken;
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User registered successfully',
+            'token' => $token,
+        ], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to register user', 'message' => $e->getMessage()], 500);
+    }
+}
+
+public function login(Request $request)
+{
+    try {
         $request->validate([
             'email' => 'required|email',
             'password' => 'required',
         ]);
-        // Check if the email exists
+
         $user = User::where('email', $request->email)->first();
         if (!$user) {
             return response()->json([
-                'error' => 'Login failed','message' => 'The email or password is incorrect.',], 400);
+                'error' => 'Login failed',
+                'message' => 'The email or password is incorrect.',
+            ], 400);
         }
-        // Check if the password is correct
+
         if (!Hash::check($request->password, $user->password)) {
-            return response()->json([ 'error' => 'Login failed', 'message' => 'The email or password is incorrect.',], 400);
+            return response()->json([
+                'error' => 'Login failed',
+                'message' => 'The email or password is incorrect.',
+            ], 400);
         }
-        // Create the token
+
         $token = $user->createToken('auth_token')->plainTextToken;
-        return response()->json(['status' => 'success','message' => 'Login successful','token' => $token,], 200);
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Login successful',
+            'token' => $token,
+        ], 200);
     } catch (\Exception $e) {
-        return response()->json(['error' => 'Login failed','message' => $e->getMessage(),], 500);
+        return response()->json([
+            'error' => 'Login failed',
+            'message' => $e->getMessage(),
+        ], 500);
     }
 }
 
-    public function updateProfile(Request $request)
+public function updateProfile(Request $request)
 {
     try {
         $user = auth()->user();
@@ -96,11 +110,15 @@ class APIController extends Controller
             'language' => 'sometimes|array',
             'country_preference' => 'sometimes|array',
             'food_preference' => 'sometimes|array',
+            'profile_image' => 'sometimes|string', // Validate the image as a base64 string
         ];
+
         $validator = Validator::make($request->all(), $rules);
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 400);
         }
+
+        // Update user details
         $user->first_name = $request->first_name ?? $user->first_name;
         $user->last_name = $request->last_name ?? $user->last_name;
         $user->contact = $request->contact ?? $user->contact;
@@ -110,15 +128,28 @@ class APIController extends Controller
         $user->language = $request->language ?? $user->language;
         $user->country_preference = $request->country_preference ?? $user->country_preference;
         $user->food_preference = $request->food_preference ?? $user->food_preference;
-        $user->save();
 
-        return response()->json(['status' => 'success','message' => 'Profile updated successfully'], 200);
+        // Handle profile image upload
+        if (isset($request->profile_image) && $request->profile_image) {
+            $file = base64_decode($request->profile_image);
+            $profileImageName = time() . '_' . uniqid() . '.png';
+            Storage::disk('public')->put($profileImageName, $file); // Save directly in public directory
+            $user->profile_image = $profileImageName; // Save the relative path in the database
+        }
+
+        $user->save(); // Save the user details including the profile image path
+
+        return response()->json(['status' => 'success', 'message' => 'Profile updated successfully'], 200);
     } catch (\Exception $e) {
-        // Log the error
         \Log::error('Update Profile Error: ' . $e->getMessage());
         return response()->json(['error' => 'Failed to update profile', 'message' => $e->getMessage()], 500);
     }
 }
+
+
+
+
+
 
     public function logout(Request $request)
     {
@@ -215,55 +246,96 @@ public function generateOtp(Request $request)
         }
     }
 
-    public function createSittingTable(Request $request)
-    {
-        try {
-            // Validate input
-            $validator = Validator::make($request->all(), [
-                'TableName' => 'required|string|max:100',
-                'TableNo' => 'required|integer',
-                'SittingCapacity' => 'required|integer',
-                'SittingPlan' => 'required|integer',
-                'TableTypeID' => 'required|integer',
-                'ImageName' => 'required|string|max:100', // Image name (string)
-                'Image' => 'required|url', // Validate the image URL
-            ]);
-    
-            if ($validator->fails()) {
-                return response()->json([
-                    'error' => 'Validation failed',
-                    'messages' => $validator->errors(),
-                ], 400);
-            }
-            $imageUrl = $request->Image;
-            // Fetch the image from the URL
-            $imageContent = file_get_contents($imageUrl);
-            if ($imageContent === false) {
-                return response()->json([
-                    'error' => 'Failed to fetch image from the URL',], 400); }
-            // Generate a unique name for the image
-            $imageName = time() . '_' . uniqid() . '.png'; // Adjust the extension as needed
-            $imagePath = $imageName;
-            Storage::disk('public')->put($imagePath, $imageContent);
-            $sittingTable = tblsittingtables::create([
-                'TableName' => $request->TableName,
-                'TableNo' => $request->TableNo,
-                'SittingCapacity' => $request->SittingCapacity,
-                'SittingPlan' => $request->SittingPlan,
-                'TableTypeID' => $request->TableTypeID,
-                'Added_By' => Auth::user()->email,
-                'ImageName' => $request->ImageName,
-                'ImagePath' => $imagePath, // Save the image path to the database
-                'Revision' => 0,
-            ]);
-            return response()->json(['status' => 'success','message' => 'Sitting Table created successfully','data' => $sittingTable, ], 200);
-        } catch (Exception $e) {
-            return response()->json([
-                'error' => 'An error occurred while creating the sitting table',
-                'message' => $e->getMessage(),
-            ], 500);
-        }
+public function getTableTypes()
+{
+    try {
+        $tableTypes = TblTableType::all();
+        return response()->json(['status' => 'success', 'data' => $tableTypes], 200);
+    } catch (\Exception $e) {
+        return response()->json(['status' => 'error', 'message' => 'Error fetching table types', 'error' => $e->getMessage()], 500);
     }
+}
+ 
+  public function createSittingTable(Request $request)
+{
+    try {
+        // Validate input
+        $validator = Validator::make($request->all(), [
+            'TableName' => 'required|string|max:100',
+            'TableNo' => 'required|integer',
+            'SittingCapacity' => 'required|integer',
+            'SittingPlan' => 'required|integer',
+            'TableTypeID' => 'required|integer',
+            'ImageName' => 'required|string|max:100', // Image name (string)
+            'Image' => 'required|string', // Validate the image as a base64 string
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'messages' => $validator->errors(),
+            ], 400);
+        }
+
+        // Handle image upload
+        $fileName = "";
+        if (isset($request->Image) && $request->Image) {
+            $file = base64_decode($request->Image);
+            $fileName = time() . '_' . uniqid() . '.png';
+            Storage::disk('public')->put($fileName, $file); // Save directly in public directory
+        } else {
+            return response()->json([
+                'error' => 'Image upload failed',
+            ], 400);
+        }
+
+        $sittingTable = tblsittingtables::create([
+            'TableName' => $request->TableName,
+            'TableNo' => $request->TableNo,
+            'SittingCapacity' => $request->SittingCapacity,
+            'SittingPlan' => $request->SittingPlan,
+            'TableTypeID' => $request->TableTypeID,
+            'Added_By' => Auth::user()->email,
+            'ImageName' => $request->ImageName,
+            'ImagePath' => $fileName, // Save the image path to the database
+            'Revision' => 0,
+        ]);
+
+        return response()->json(['status' => 'success', 'message' => 'Sitting Table created successfully'], 200);
+    } catch (Exception $e) {
+        return response()->json([
+            'error' => 'An error occurred while creating the sitting table',
+            'message' => $e->getMessage(),
+        ], 500);
+    }
+}
+
+public function getSittingTables()
+{
+    try {
+        $sittingTables = tblsittingtables::select('id', 'TableName', 'TableNo', 'SittingCapacity', 'SittingPlan', 'ImagePath')
+            ->get()
+            ->map(function ($table) {
+                return [
+                    'id' => $table->id,
+                    'TableName' => $table->TableName,
+                    'TableNo' => $table->TableNo,
+                    'SittingCapacity' => $table->SittingCapacity,
+                    'SittingPlan' => $table->SittingPlan,
+                    'ImagePath' => !empty($table->ImagePath) ? Storage::disk('public')->url($table->ImagePath) : null,
+                ];
+            });
+
+        return response()->json(['status' => 'success', 'data' => $sittingTables], 200);
+    } catch (Exception $e) {
+        return response()->json([
+            'error' => 'An error occurred while fetching sitting tables',
+            'message' => $e->getMessage(),
+        ], 500);
+    }
+}
+
+
     
     public function createPaymentPlan(Request $request)
     {
@@ -347,7 +419,7 @@ public function generateOtp(Request $request)
         }
     }
     
-  public function updateSittingTable(Request $request)
+public function updateSittingTable(Request $request)
 {
     try {
         $user = Auth::user();
@@ -355,8 +427,25 @@ public function generateOtp(Request $request)
         $id = $request->query('id');
         $sittingTable = TblSittingTableS::findOrFail($id);
 
-        $updateData = [];
+        $rules = [
+            'TableName' => 'sometimes|string|max:100',
+            'TableNo' => 'sometimes|integer',
+            'SittingCapacity' => 'sometimes|integer',
+            'SittingPlan' => 'sometimes|integer',
+            'TableTypeID' => 'sometimes|integer',
+            'isReserved' => 'sometimes|boolean',
+            'show' => 'sometimes|boolean',
+            'ImageName' => 'sometimes|string|max:100',
+            'Image' => 'sometimes|string', // Validate the image as a base64 string
+        ];
 
+        $validator = Validator::make($request->all(), $rules);
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 400);
+        }
+
+        $updateData = [];
+        
         if ($request->has('TableName')) {
             $updateData['TableName'] = $request->input('TableName');
         }
@@ -378,31 +467,20 @@ public function generateOtp(Request $request)
         if ($request->has('show')) {
             $updateData['show'] = (int) $request->input('show');
         }
-        
+
         // Handle image update
-        if ($request->has('Image') && $request->has('ImageName')) {
-            $imageUrl = $request->Image;
-
-            // Fetch the image from the provided URL
-            $imageContent = file_get_contents($imageUrl);
-            if ($imageContent === false) {
-                return response()->json(['error' => 'Failed to fetch image from the URL'], 400);
-            }
-
-            // Generate a unique name for the image
-            $imageName = time() . '_' . uniqid() . '.png'; // Adjust the extension if needed
-            $imagePath = $imageName;
-
-            // Store the new image
-            Storage::disk('public')->put($imagePath, $imageContent);
+        if ($request->has('Image') && $request->Image) {
+            $file = base64_decode($request->Image);
+            $fileName = time() . '_' . uniqid() . '.png';
+            Storage::disk('public')->put($fileName, $file); // Save directly in public directory
 
             // Delete the old image if necessary
             if (!empty($sittingTable->ImagePath)) {
                 Storage::disk('public')->delete($sittingTable->ImagePath);
             }
 
-            $updateData['ImageName'] = $request->ImageName;
-            $updateData['ImagePath'] = $imagePath;
+            $updateData['ImageName'] = $request->input('ImageName');
+            $updateData['ImagePath'] = $fileName;
         }
 
         $updateData['Updated_By'] = $userEmail;
@@ -416,12 +494,14 @@ public function generateOtp(Request $request)
             'message' => 'Sitting Table updated successfully',
         ], 200);
     } catch (\Exception $e) {
+        \Log::error('Update Sitting Table Error: ' . $e->getMessage());
         return response()->json([
             'error' => 'Failed to update Sitting Table',
             'details' => $e->getMessage()
         ], 500);
     }
 }
+
 
     
  public function updatePaymentPlan(Request $request)
@@ -716,7 +796,7 @@ public function createBrand(Request $request)
                 'Added_By' => $userEmail,
                 'AddedDateTime' => Carbon::now(),
             ]);
-            return response()->json(['status' => 'success','message' => 'Category created successfully'], 201);
+            return response()->json(['status' => 'success','message' => 'Category created successfully'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to create category', 'details' => $e->getMessage()], 500);
         }
@@ -806,10 +886,51 @@ public function createBrand(Request $request)
     }
 }
 
-    
-    public function createProduct(Request $request)
+public function getBrands()
 {
     try {
+        $brands = TblBrand::select('id', 'BrandName')->get();
+        return response()->json(['status' => 'success', 'data' => $brands], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to fetch brands', 'details' => $e->getMessage()], 500);
+    }
+}
+
+public function getCategories()
+{
+    try {
+        $categories = TblCategory::select('id', 'CategoryName')->get();
+        return response()->json(['status' => 'success', 'data' => $categories], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to fetch categories', 'details' => $e->getMessage()], 500);
+    }
+}
+
+public function getSubCategories()
+{
+    try {
+        $subCategories = TblSubCategory::select('id', 'SubCategoryName')->get();
+        return response()->json(['status' => 'success', 'data' => $subCategories], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to fetch sub-categories', 'details' => $e->getMessage()], 500);
+    }
+}
+
+public function getSubSubCategories()
+{
+    try {
+        $subSubCategories = TblSubSubCategory::select('id', 'SubSubCategoryName')->get();
+        return response()->json(['status' => 'success', 'data' => $subSubCategories], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to fetch sub-sub-categories', 'details' => $e->getMessage()], 500);
+    }
+}
+
+    
+public function createProduct(Request $request)
+{
+    try {
+        // Validate input
         $validator = Validator::make($request->all(), [
             'ProductCode' => 'required|string|max:255',
             'ProductName' => 'required|string|max:255',
@@ -827,7 +948,7 @@ public function createBrand(Request $request)
             'ReorderLevel' => 'nullable|integer',
             'Qty' => 'nullable|integer',
             'ImageName' => 'nullable|string|max:100', // Image name (string)
-            'ImagePath' => 'required|url', // Validate the image URL
+            'ImagePath' => 'nullable|string', // Validate the image as a base64 string
         ]);
 
         if ($validator->fails()) {
@@ -836,17 +957,16 @@ public function createBrand(Request $request)
                 'messages' => $validator->errors(),
             ], 400);
         }
-        $imageUrl = $request->ImagePath;
-        // Fetch the image from the URL
-        $imageContent = file_get_contents($imageUrl);
-        if ($imageContent === false) {
-            return response()->json([
-                'error' => 'Failed to fetch image from the URL',
-            ], 400);
+
+        // Handle image upload
+        $imagePath = null;
+        if (isset($request->ImagePath) && $request->ImagePath) {
+            $file = base64_decode($request->ImagePath);
+            $imageName = time() . '_' . uniqid() . '.png';
+            Storage::disk('public')->put($imageName, $file); // Save directly in public directory
+            $imagePath = $imageName;
         }
-        $imageName = time() . '_' . uniqid() . '.png'; // Adjust the extension as needed
-        $imagePath = $imageName;
-        Storage::disk('public')->put($imagePath, $imageContent);
+
         $product = TblProducts::create([
             'ProductCode' => $request->ProductCode,
             'ProductName' => $request->ProductName,
@@ -868,10 +988,16 @@ public function createBrand(Request $request)
             'Added_By' => Auth::user()->email,
             'AddedDateTime' => Carbon::now(),
         ]);
-        return response()->json(['status' => 'success','message' => 'Product added successfully',], 200);
-    } catch (\Exception $e) { return response()->json([ 'error' => 'An error occurred while adding the product', 'message' => $e->getMessage(), ], 500);}
+
+        return response()->json(['status' => 'success', 'message' => 'Product added successfully'], 200);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'An error occurred while adding the product',
+            'message' => $e->getMessage(),
+        ], 500);
+    }
 }
-   
+
 public function updateProduct(Request $request)
 {
     try {
@@ -893,45 +1019,88 @@ public function updateProduct(Request $request)
             'ReorderLevel' => 'nullable|integer',
             'Qty' => 'nullable|integer',
             'ImageName' => 'nullable|string|max:100',
-            'ImagePath' => 'nullable|url',
+            'ImagePath' => 'nullable|string', // Validate the image as a base64 string
         ]);
-        if ($validator->fails()) { return response()->json(['error' => 'Validation failed', 'messages' => $validator->errors()], 400);}
-        $product = TblProducts::find($request->query('id'));
-        if (!$product) { return response()->json(['error' => 'Product not found'], 404);}
-        if ($request->has('ImagePath')) {
-            $imageContent = @file_get_contents($request->ImagePath);
-            if ($imageContent === false) { return response()->json(['error' => 'Failed to fetch image from the URL'], 400);}
-            $imageName = time() . '_' . uniqid() . '.png';
-            $imagePath = $imageName;
-            Storage::disk('public')->put($imagePath, $imageContent);
-            $product->ImageName = $request->ImageName ?? $product->ImageName;
-            $product->ImagePath = $imagePath;
+
+        if ($validator->fails()) {
+            return response()->json(['error' => 'Validation failed', 'messages' => $validator->errors()], 400);
         }
+
+        $product = TblProducts::find($request->id);
+        if (!$product) {
+            return response()->json(['error' => 'Product not found'], 404);
+        }
+
+        // Handle image upload
+        if (isset($request->ImagePath) && $request->ImagePath) {
+            $file = base64_decode($request->ImagePath);
+            $imageName = time() . '_' . uniqid() . '.png';
+            Storage::disk('public')->put($imageName, $file); // Save directly in public directory
+            $product->ImageName = $request->ImageName ?? $product->ImageName;
+            $product->ImagePath = $imageName;
+        }
+
         $fields = [
-            'ProductCode', 'ProductName','BID', 'CID', 'SCID', 'SSCID',
+            'ProductCode', 'ProductName', 'BID', 'CID', 'SCID', 'SSCID',
             'PurchasedPrice', 'SalePrice1', 'SalePrice2', 'DiscountPercentage',
             'ActiveDiscount', 'ExpiryDate', 'RackNo', 'ReorderLevel', 'Qty',
         ];
-        foreach ($fields as $field) { if ($request->has($field)) { $product->$field = $request->$field;}}
+        foreach ($fields as $field) {
+            if ($request->has($field)) {
+                $product->$field = $request->$field;
+            }
+        }
+
         $product->Updated_By = Auth::user()->email;
         $product->save();
-        return response()->json(['status' => 'success','message' => 'Product updated successfully'], 200);
-    } catch (\Exception $e) { return response()->json(['error' => 'An error occurred while updating the product', 'message' => $e->getMessage()], 500);}
+
+        return response()->json(['status' => 'success', 'message' => 'Product updated successfully'], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'An error occurred while updating the product', 'message' => $e->getMessage()], 500);
+    }
 }
+
+
 
 public function searchProducts(Request $request)
 {
     try {
         $query = $request->query('ProductName'); 
         if ($query) {
-            $products = TblProducts::where('ProductName', 'LIKE', "%$query%")->get();
-            if ($products->isEmpty()) { return response()->json(['message' => 'No products found matching the search criteria'], 404); }
+            $products = TblProducts::where('ProductName', 'LIKE', "%$query%")->get()->map(function ($product) {
+                return [
+                    'id' => $product->id,
+                    'ProductName' => $product->ProductName,
+                    'ProductDescription' => $product->ProductDescription,
+                    'Price' => $product->Price,
+                    'ImagePath' => !empty($product->ImagePath) ? Storage::disk('public')->url($product->ImagePath) : null,
+                    'Added_By' => $product->Added_By,
+                    'Revision' => $product->Revision,
+                ];
+            });
+            if ($products->isEmpty()) {
+                return response()->json(['message' => 'No products found matching the search criteria'], 404);
+            }
             return response()->json(['status' => 'success','data' => $products], 200);
         } else {
-            $products = TblProducts::all();
-            return response()->json(['status' => 'success','data' => $products], 200); }
-    } catch (\Exception $e) {return response()->json(['error' => 'Failed to fetch products', 'details' => $e->getMessage()], 500); }
+            $products = TblProducts::all()->map(function ($product) {
+                return [
+                    'id' => $product->id,
+                    'ProductName' => $product->ProductName,
+                    'ProductDescription' => $product->ProductDescription,
+                    'Price' => $product->Price,
+                    'ImagePath' => !empty($product->ImagePath) ? Storage::disk('public')->url($product->ImagePath) : null,
+                    'Added_By' => $product->Added_By,
+                    'Revision' => $product->Revision,
+                ];
+            });
+            return response()->json(['status' => 'success','data' => $products], 200);
+        }
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to fetch products', 'details' => $e->getMessage()], 500);
+    }
 }
+
 
 public function deleteBrand(Request $request)
 {

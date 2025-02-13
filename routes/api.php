@@ -10,9 +10,11 @@ Route::post('/generate-otp', [APIController::class, 'generateOtp']);
 Route::post('/reset-password-with-otp', [APIController::class, 'resetPasswordWithOtp']);
 
 Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/update-profile', [UserController::class, 'updateProfile']);
+    Route::get('/table-types', [APIController::class, 'getTableTypes']);
+    Route::post('/update-profile', [APIController::class, 'updateProfile']);
     Route::post('/table-type', [APIController::class, 'createTableType']);
     Route::post('/sitting-table', [APIController::class, 'createSittingTable']);
+   Route::get('/sitting-table', [APIController::class, 'getSittingTables']);
     Route::post('/payment-plan', [APIController::class, 'createPaymentPlan']);
     Route::post('/reservation', [APIController::class, 'createReservation']);
     Route::put('/table-type', [APIController::class, 'updateTableType']);
@@ -42,6 +44,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/subsubcategory', [APIController::class, 'createSubSubCategory']);
     Route::put('/subsubcategory', [APIController::class, 'updateSubSubCategory']);
     Route::delete('/subsubcategory', [APIController::class, 'deleteSubSubCategory']); 
+    Route::get('/brands', [APIController::class, 'getBrands']);
+    Route::get('/category', [APIController::class, 'getCategories']);
+    Route::get('/subcategory', [APIController::class, 'getSubCategories']);
+    Route::get('/subsubcategory', [APIController::class, 'getSubSubCategories']);
     Route::post('/products', [APIController::class, 'createProduct']);
     Route::put('/products', [APIController::class, 'updateProduct']);
     Route::get('/products', [APIController::class, 'searchProducts']); 
