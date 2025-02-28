@@ -18,6 +18,7 @@ use App\Models\TblProducts;
 use App\Models\TblAllPayments;
 use App\Models\PurchaseMaster;
 use App\Models\PurchaseDetail;
+use App\Models\TblCartMaster;
 use App\Models\Vendor;
 use App\Mail\SendOtpMail;
 
@@ -1559,5 +1560,45 @@ public function getPurchases(Request $request)
         } catch (\Exception $e) {
             return response()->json(['status' => 'error','message' => $e->getMessage(), ], 500);}
 }
+
+public function createCartMaster(Request $request)
+{
+    try {
+        $user = Auth::user(); // Get authenticated user
+        if (!$user) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'ReservationID' => 'nullable|integer|exists:tbltablereservation,id',
+            'Discount' => 'required|numeric|min:0',
+            'TotalAmount' => 'required|numeric|min:0',
+            'PaymentStatus' => 'required|in:pending,done',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $machineName = gethostname(); // Get machine name dynamically
+
+        TblCartMaster::create([
+            'User_id' => $user->id, // Get User ID from token
+            'ReservationID' => $request->ReservationID,
+            'Discount' => $request->Discount,
+            'TotalAmount' => $request->TotalAmount,
+            'PaymentStatus' => $request->PaymentStatus,
+            'MachineName' => $machineName, // Set machine name dynamically
+            'AddedBy' => $user->email, // Get email from authenticated user
+            'Revision' => 0, // Default value
+        ]);
+
+        return response()->json(['status' => 'success', 'message' => 'Cart Master entry created successfully'], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to create Cart Master entry', 'details' => $e->getMessage()], 500);
+    }
+}
+
+
 
 }

@@ -77,5 +77,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/purchase-detail', [APIController::class, 'getPurchaseDetails']);
     Route::delete('/purchase-detail', [APIController::class, 'deletePurchaseDetail']);
 
+    Route::post('/create-cart', [APIController::class, 'createCartMaster']);
+
     Route::post('/logout', [APIController::class, 'logout']);
 });
