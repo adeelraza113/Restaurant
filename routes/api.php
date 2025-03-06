@@ -16,6 +16,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/sitting-table', [APIController::class, 'createSittingTable']);
    Route::get('/sitting-table', [APIController::class, 'getSittingTables']);
     Route::post('/payment-plan', [APIController::class, 'createPaymentPlan']);
+    Route::get('/payment-plan', [APIController::class, 'getPaymentPlans']);
     Route::post('/reservation', [APIController::class, 'createReservation']);
     Route::put('/table-type', [APIController::class, 'updateTableType']);
     Route::put('/sitting-table', [APIController::class, 'updateSittingTable']);
@@ -63,21 +64,25 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/vendors', [APIController::class, 'getVendorDetails']);
     Route::delete('/vendors', [APIController::class, 'deleteVendor']);
 
-    Route::post('/purchase-master', [APIController::class, 'createPurchaseMaster']);
-    Route::put('/purchase-master/{id}', [APIController::class, 'updatePurchaseMaster']);
-    Route::get('/purchase-master', [APIController::class, 'getPurchaseMasters']);
-    Route::delete('/purchase-master', [APIController::class, 'deletePurchaseMaster']);
-
+    Route::post('/purchase', [APIController::class, 'createPurchase']);
+    Route::put('/purchase', [APIController::class, 'updatePurchase']);
+    Route::get('/purchase', [APIController::class, 'getPurchase']);
+    Route::delete('/purchase', [APIController::class, 'deletePurchase']);
+    
     Route::get('/view-products', [APIController::class, 'getAllProducts']);
     Route::get('/view-reservation-payment', [APIController::class, 'getTableDetails']);
     Route::get('/view-purchases', [APIController::class, 'getPurchases']);
 
-    Route::post('/purchase-detail', [APIController::class, 'createPurchaseDetail']);
-    Route::put('/purchase-detail', [APIController::class, 'updatePurchaseDetail']);
-    Route::get('/purchase-detail', [APIController::class, 'getPurchaseDetails']);
-    Route::delete('/purchase-detail', [APIController::class, 'deletePurchaseDetail']);
+    
+    Route::post('/cartmaster', [APIController::class, 'createCartMaster']);
+    Route::put('/cartmaster', [APIController::class, 'updateCartMaster']);
+    Route::get('/cartmaster', [APIController::class, 'getCartMasters']);
+    Route::delete('/cartmaster', [APIController::class, 'deleteCartMaster']);
 
-    Route::post('/create-cart', [APIController::class, 'createCartMaster']);
+    Route::post('/cartdetails', [APIController::class, 'createCartDetail']);
+    Route::put('/cartdetails', [APIController::class, 'updateCartDetail']);
+    Route::get('/cartdetails', [APIController::class, 'getCartDetails']);
+    Route::delete('/cartdetails', [APIController::class, 'deleteCartDetail']);
 
     Route::post('/logout', [APIController::class, 'logout']);
 });
