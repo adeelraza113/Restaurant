@@ -74,15 +74,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/view-purchases', [APIController::class, 'getPurchases']);
 
     
-    Route::post('/cartmaster', [APIController::class, 'createCartMaster']);
-    Route::put('/cartmaster', [APIController::class, 'updateCartMaster']);
-    Route::get('/cartmaster', [APIController::class, 'getCartMasters']);
-    Route::delete('/cartmaster', [APIController::class, 'deleteCartMaster']);
+    Route::post('/cart', [APIController::class, 'createCart']);
+    Route::put('/cart', [APIController::class, 'updateCart']);
+    Route::get('/cart', [APIController::class, 'getCart']);
+    Route::delete('/cart', [APIController::class, 'deleteCart']);
 
-    Route::post('/cartdetails', [APIController::class, 'createCartDetail']);
-    Route::put('/cartdetails', [APIController::class, 'updateCartDetail']);
-    Route::get('/cartdetails', [APIController::class, 'getCartDetails']);
-    Route::delete('/cartdetails', [APIController::class, 'deleteCartDetail']);
+    Route::get('/reservation', [APIController::class, 'getReservations']);
+    Route::put('/purchase', [APIController::class, 'updatePurchaseLock']);
 
     Route::post('/logout', [APIController::class, 'logout']);
 });
