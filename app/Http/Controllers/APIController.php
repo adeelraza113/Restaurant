@@ -1753,6 +1753,47 @@ public function createCart(Request $request)
     }
 }
 
+public function updateIssuedToStore(Request $request)
+{
+    $request->validate([
+        'id' => 'required|integer|exists:tblPurchase,id',
+    ]);
+
+    $user = Auth::user();
+    $userEmail = $user->email;
+    $machineName = gethostname();
+
+    try {
+        $purchase = Purchase::findOrFail($request->query('id'));
+        
+        // Fetch Qty and ProductID
+        $qty = $purchase->Qty;
+        $productID = $purchase->ProductID;
+        
+        // Update IssuedtoStore to 1
+        $purchase->update([
+            'IssuedtoStore' => 1,
+            'Updated_By' => $userEmail,
+            'UpdatedDateTime' => Carbon::now(),
+            'MachineName' => $machineName,
+            'Revision' => $purchase->Revision + 1,
+        ]);
+
+        // Update Qty in tblproducts
+        $product = TblProducts::find($productID);
+        if ($product) {
+            $product->update([
+                'Qty' => $product->Qty + $qty, 
+            ]);
+        }
+
+        return response()->json(['status' => 'success', 'message' => 'IssuedtoStore updated successfully and product Qty adjusted'], 200);
+    } catch (\Exception $e) {
+        return response()->json(['message' => 'Error updating IssuedtoStore', 'error' => $e->getMessage()], 500);
+    }
+}
+
+
 
 
 }

@@ -81,6 +81,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/reservation', [APIController::class, 'getReservations']);
     Route::put('/purchase', [APIController::class, 'updatePurchaseLock']);
+    Route::put('/purchase', [APIController::class, 'updateIssuedToStore']);
+
 
     Route::post('/logout', [APIController::class, 'logout']);
 });
