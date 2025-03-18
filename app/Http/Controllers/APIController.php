@@ -109,7 +109,7 @@ public function updateProfile(Request $request)
             'language' => 'sometimes|array',
             'country_preference' => 'sometimes|array',
             'food_preference' => 'sometimes|array',
-            'profile_image' => 'sometimes|string', // Validate the image as a base64 string
+            'profile_image' => 'sometimes|string', 
         ];
 
         $validator = Validator::make($request->all(), $rules);
@@ -117,7 +117,6 @@ public function updateProfile(Request $request)
             return response()->json(['errors' => $validator->errors()], 400);
         }
 
-        // Update user details
         $user->first_name = $request->first_name ?? $user->first_name;
         $user->last_name = $request->last_name ?? $user->last_name;
         $user->contact = $request->contact ?? $user->contact;
@@ -642,12 +641,10 @@ public function getTablesByReservationStatus(Request $request)
         $status = $request->query('status');
         $data = $request->query('data');
 
-        // Validate status parameter
         if (!in_array($status, ['all', '1', '0'])) {
             return response()->json(['error' => 'Invalid status parameter. Use "all", "1", or "0".'], 400);
         }
 
-        // Query tables
         $query = TblSittingTableS::query();
         if ($status !== 'all') {
             $query->where('isReserved', $status === '1' ? 1 : 0);
@@ -954,7 +951,6 @@ public function getSubSubCategories()
 public function createProduct(Request $request)
 {
     try {
-        // Validate input
         $validator = Validator::make($request->all(), [
             'ProductCode' => 'required|string|max:255',
             'ProductName' => 'required|string|max:255',
@@ -1043,7 +1039,7 @@ public function updateProduct(Request $request)
             'ReorderLevel' => 'nullable|integer',
             'Qty' => 'nullable|integer',
             'ImageName' => 'nullable|string|max:100',
-            'ImagePath' => 'nullable|string', // Validate the image as a base64 string
+            'ImagePath' => 'nullable|string', 
         ]);
 
         if ($validator->fails()) {
@@ -1187,7 +1183,7 @@ public function createAllPayment(Request $request)
             'InvoiceNo' => 'required|string|max:100|unique:tblallpayments,InvoiceNo',
         ]);
     } catch (\Illuminate\Validation\ValidationException $e) {
-        // Check if specific fields failed validation
+        
         $errors = $e->errors();
         if (isset($errors['ReservationID'])) {
             return response()->json(['message' => 'Reservation ID is invalid or not found'], 404);
@@ -1201,7 +1197,7 @@ public function createAllPayment(Request $request)
     try {
         $user = Auth::user();
         $userEmail = $user->email;
-        $machineName = gethostname(); // Retrieves the host name of the server or machine
+        $machineName = gethostname(); 
         $allPayment = TblAllPayments::create([
             'ReservationID' => $request->ReservationID,
             'ReservationPaymentID' => $request->ReservationPaymentID,
@@ -1662,7 +1658,7 @@ public function createCart(Request $request)
         }
     }
 
-    // GET API: Fetch All Carts or Single Cart by OrderNo
+  
     public function getCart(Request $request)
     {
         try {
