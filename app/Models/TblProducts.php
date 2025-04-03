@@ -56,4 +56,11 @@ class TblProducts extends Model
     {
         return $this->belongsTo(TblSubSubCategory::class, 'SSCID');
     }
+
+    public function favourites()
+{
+    return $this->hasMany(Favourite::class, 'ProductID');
+}
+
+
 }

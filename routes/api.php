@@ -65,23 +65,33 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/vendors', [APIController::class, 'deleteVendor']);
 
     Route::post('/purchase', [APIController::class, 'createPurchase']);
-    Route::put('/purchase', [APIController::class, 'updatePurchase']);
+     Route::put('/purchase', [APIController::class, 'updatePurchase']);
     Route::get('/purchase', [APIController::class, 'getPurchase']);
     Route::delete('/purchase', [APIController::class, 'deletePurchase']);
     
     Route::get('/view-products', [APIController::class, 'getAllProducts']);
     Route::get('/view-reservation-payment', [APIController::class, 'getTableDetails']);
     Route::get('/view-purchases', [APIController::class, 'getPurchases']);
-
     
-    Route::post('/cart', [APIController::class, 'createCart']);
-    Route::put('/cart', [APIController::class, 'updateCart']);
-    Route::get('/cart', [APIController::class, 'getCart']);
-    Route::delete('/cart', [APIController::class, 'deleteCart']);
+   Route::post('/orders', [APIController::class, 'createOrder']);
+   Route::get('/orders', [APIController::class, 'getOrders']);
+    
+   
+   Route::get('/reservation', [APIController::class, 'getReservations']);
+   Route::put('/purchase', [APIController::class, 'updatePurchaseLock']);
+   Route::put('/purchase-store', [APIController::class, 'updateIssuedToStore']);
+   
+   Route::put('/profile', [APIController::class, 'profileUpdate']);
+   Route::get('/profile', [APIController::class, 'getProfile']);
 
-    Route::get('/reservation', [APIController::class, 'getReservations']);
-    Route::put('/purchase', [APIController::class, 'updatePurchaseLock']);
-    Route::put('/purchase', [APIController::class, 'updateIssuedToStore']);
+    Route::delete('/user', [APIController::class, 'deleteUser']);
+    Route::get('/food', [APIController::class, 'getCategoriesWithItems']);
+    Route::post('/favourite', [APIController::class, 'toggleFavourite']);
+    Route::get('/favourite', [APIController::class, 'getFavouriteProducts']);
+
+
+
+
 
 
     Route::post('/logout', [APIController::class, 'logout']);

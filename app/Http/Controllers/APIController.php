@@ -17,7 +17,10 @@ use App\Models\TblSubSubCategory;
 use App\Models\TblProducts;
 use App\Models\TblAllPayments;
 use App\Models\Vendor;
-use App\Models\Cart;
+use App\Models\Purchase;
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\Favourite;
 use App\Mail\SendOtpMail;
 
 use Illuminate\Support\Facades\DB;
@@ -27,32 +30,39 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Http\JsonResponse;
 use Exception;
 use Carbon\Carbon;
 
 
 class APIController extends Controller
 {
-   public function register(Request $request)
+  public function register(Request $request)
 {
     try {
         $validator = Validator::make($request->all(), [
             'email' => 'required|email|unique:users',
             'password' => 'required|confirmed|min:6',
         ]);
+
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 400);
         }
+
         $user = User::create([
             'email' => $request->email,
             'password' => Hash::make($request->password),
         ]);
+
         $token = $user->createToken('auth_token')->plainTextToken;
+
         return response()->json([
             'status' => 'success',
             'message' => 'User registered successfully',
+            'id' => $user->id,
             'token' => $token,
         ], 200);
+
     } catch (\Exception $e) {
         return response()->json(['error' => 'Failed to register user', 'message' => $e->getMessage()], 500);
     }
@@ -67,14 +77,7 @@ public function login(Request $request)
         ]);
 
         $user = User::where('email', $request->email)->first();
-        if (!$user) {
-            return response()->json([
-                'error' => 'Login failed',
-                'message' => 'The email or password is incorrect.',
-            ], 400);
-        }
-
-        if (!Hash::check($request->password, $user->password)) {
+        if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
                 'error' => 'Login failed',
                 'message' => 'The email or password is incorrect.',
@@ -82,10 +85,17 @@ public function login(Request $request)
         }
 
         $token = $user->createToken('auth_token')->plainTextToken;
+
+        // Construct UserName
+        $userName = trim($user->first_name . ' ' . $user->last_name);
+
         return response()->json([
             'status' => 'success',
             'message' => 'Login successful',
-            'token' => $token,
+            'id' => $user->id,
+            'UserName' => $userName,
+            'profile_image' => $user->profile_image ? asset('storage/' . $user->profile_image) : null,
+            'token' => $token
         ], 200);
     } catch (\Exception $e) {
         return response()->json([
@@ -94,6 +104,8 @@ public function login(Request $request)
         ], 500);
     }
 }
+
+
 
 public function updateProfile(Request $request)
 {
@@ -109,7 +121,7 @@ public function updateProfile(Request $request)
             'language' => 'sometimes|array',
             'country_preference' => 'sometimes|array',
             'food_preference' => 'sometimes|array',
-            'profile_image' => 'sometimes|string', 
+            'profile_image' => 'sometimes|string',
         ];
 
         $validator = Validator::make($request->all(), $rules);
@@ -117,6 +129,7 @@ public function updateProfile(Request $request)
             return response()->json(['errors' => $validator->errors()], 400);
         }
 
+        // Update user details
         $user->first_name = $request->first_name ?? $user->first_name;
         $user->last_name = $request->last_name ?? $user->last_name;
         $user->contact = $request->contact ?? $user->contact;
@@ -127,17 +140,22 @@ public function updateProfile(Request $request)
         $user->country_preference = $request->country_preference ?? $user->country_preference;
         $user->food_preference = $request->food_preference ?? $user->food_preference;
 
-        // Handle profile image upload
         if (isset($request->profile_image) && $request->profile_image) {
             $file = base64_decode($request->profile_image);
             $profileImageName = time() . '_' . uniqid() . '.png';
-            Storage::disk('public')->put($profileImageName, $file); // Save directly in public directory
-            $user->profile_image = $profileImageName; // Save the relative path in the database
+            Storage::disk('public')->put($profileImageName, $file);
+            $user->profile_image = $profileImageName;
         }
 
-        $user->save(); // Save the user details including the profile image path
+        $user->save();
+        $userName = trim($user->first_name . ' ' . $user->last_name);
 
-        return response()->json(['status' => 'success', 'message' => 'Profile updated successfully'], 200);
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Profile updated successfully',
+            'UserName' => $userName,
+            'profile_image' => $user->profile_image ? asset('storage/' . $user->profile_image) : null,
+        ], 200);
     } catch (\Exception $e) {
         \Log::error('Update Profile Error: ' . $e->getMessage());
         return response()->json(['error' => 'Failed to update profile', 'message' => $e->getMessage()], 500);
@@ -257,15 +275,14 @@ public function getTableTypes()
   public function createSittingTable(Request $request)
 {
     try {
-        // Validate input
         $validator = Validator::make($request->all(), [
             'TableName' => 'required|string|max:100',
             'TableNo' => 'required|integer',
             'SittingCapacity' => 'required|integer',
             'SittingPlan' => 'required|integer',
             'TableTypeID' => 'required|integer',
-            'ImageName' => 'required|string|max:100', // Image name (string)
-            'Image' => 'required|string', // Validate the image as a base64 string
+            'ImageName' => 'required|string|max:100', 
+            'Image' => 'required|string', 
         ]);
 
         if ($validator->fails()) {
@@ -275,12 +292,11 @@ public function getTableTypes()
             ], 400);
         }
 
-        // Handle image upload
         $fileName = "";
         if (isset($request->Image) && $request->Image) {
             $file = base64_decode($request->Image);
             $fileName = time() . '_' . uniqid() . '.png';
-            Storage::disk('public')->put($fileName, $file); // Save directly in public directory
+            Storage::disk('public')->put($fileName, $file); 
         } else {
             return response()->json([
                 'error' => 'Image upload failed',
@@ -295,7 +311,7 @@ public function getTableTypes()
             'TableTypeID' => $request->TableTypeID,
             'Added_By' => Auth::user()->email,
             'ImageName' => $request->ImageName,
-            'ImagePath' => $fileName, // Save the image path to the database
+            'ImagePath' => $fileName, 
             'Revision' => 0,
         ]);
 
@@ -387,39 +403,70 @@ public function getSittingTables()
 
 
 
-    public function createReservation(Request $request)
-    {
-        try {
-            $validator = Validator::make($request->all(), [
-                'UserID' => 'required|integer|exists:users,id',
-                'SittingTableID' => 'required|integer|exists:tblsittingtables,id',
-                'SittingPlan' => 'required|integer',
-                'ReservationNumber' => 'required|string|max:50|unique:tbltablereservation,ReservationNumber',
-                'StartTime' => 'required|date',
-                'EndTime' => 'required|date|after:StartTime',
-                'ExtendedTime' => 'nullable|date|after:EndTime',
-            ]);
-            if ($validator->fails()) {
-                return response()->json(['errors' => $validator->errors()], 422);
-            }
-            $user = Auth::user();
-            $userEmail = $user->email;
-            $reservation = TblTableReservation::create([
-               'UserID' => $request->UserID,
-                'SittingTableID'=> $request->SittingTableID,
-                'SittingPlan'=> $request->SittingPlan,
-                'ReservationNumber'=> $request->ReservationNumber,
-                'StartTime'=> $request->StartTime,
-                'EndTime'=> $request->EndTime,
-                'ExtendedTime'=> $request->ExtendedTime,
-                'Added_By' => $userEmail, 
-            ]);
-            return response()->json(['status' => 'success','message' => 'Reservation created successfully'], 200);
-        } catch (Exception $e) {
-            return response()->json(['error' => 'An error occurred while creating the reservation', 'details' => $e->getMessage()], 500);
+   public function createReservation(Request $request)
+{
+    try {
+        $user = Auth::user();
+        $userId = $user->id;
+        $userEmail = $user->email;
+
+        // Preprocess dates
+        $startTime = Carbon::createFromFormat('d-M-Y g:i A', $request->StartTime);
+        $endTime = Carbon::createFromFormat('d-M-Y g:i A', $request->EndTime);
+
+        $extendedTime = null;
+        if ($request->ExtendedTime) {
+            $extendedTime = Carbon::createFromFormat('d-M-Y g:i A', $request->ExtendedTime);
         }
+
+        // Validate after conversion
+        $validator = Validator::make([
+            'SittingTableID' => $request->SittingTableID,
+            'SittingPlan' => $request->SittingPlan,
+            'StartTime' => $startTime,
+            'EndTime' => $endTime,
+            'ExtendedTime' => $extendedTime,
+        ], [
+            'SittingTableID' => 'required|integer|exists:tblsittingtables,id',
+            'SittingPlan' => 'required|integer',
+            'StartTime' => 'required|date',
+            'EndTime' => 'required|date|after:StartTime',
+            'ExtendedTime' => 'nullable|date|after:EndTime',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $nextId = DB::table('tbltablereservation')->max('id') + 1;
+        $reservationNumber = 'T-' . $userId . '-' . $nextId;
+
+        $reservation = TblTableReservation::create([
+            'UserID' => $userId,
+            'SittingTableID' => $request->SittingTableID,
+            'SittingPlan' => $request->SittingPlan,
+            'ReservationNumber' => $reservationNumber,
+            'StartTime' => $startTime,
+            'EndTime' => $endTime,
+            'ExtendedTime' => $extendedTime,
+            'Added_By' => $userEmail,
+        ]);
+
+        DB::table('tblsittingtables')
+            ->where('id', $request->SittingTableID)
+            ->update(['isReserved' => 1]);
+
+        return response()->json(['status' => 'success', 'message' => 'Reservation created and table marked as reserved'], 200);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'An error occurred while creating the reservation',
+            'details' => $e->getMessage()
+        ], 500);
     }
-    
+}
+
+   
     public function updateTableType(Request $request)
     {
         try {
@@ -491,13 +538,11 @@ public function updateSittingTable(Request $request)
             $updateData['show'] = (int) $request->input('show');
         }
 
-        // Handle image update
         if ($request->has('Image') && $request->Image) {
             $file = base64_decode($request->Image);
             $fileName = time() . '_' . uniqid() . '.png';
-            Storage::disk('public')->put($fileName, $file); // Save directly in public directory
+            Storage::disk('public')->put($fileName, $file); 
 
-            // Delete the old image if necessary
             if (!empty($sittingTable->ImagePath)) {
                 Storage::disk('public')->delete($sittingTable->ImagePath);
             }
@@ -551,29 +596,51 @@ public function updateSittingTable(Request $request)
         }
     }
     
-    public function updateReservation(Request $request)
-    {
-        try {
-            $reservationId = $request->query('id');
-            if (!$reservationId) {
-                return response()->json(['error' => 'Reservation ID is required in query parameters'], 400);
-            }
-            $user = Auth::user();
-            $userEmail = $user->email;
-            $reservation = TblTableReservation::findOrFail($reservationId);
-            $fieldsToUpdate = $request->only([
-                'SittingTableID','SittingPlan','ReservationNumber',
-                'StartTime','EndTime', 'ExtendedTime',
-            ]);
-            $fieldsToUpdate['Updated_By'] = $userEmail;
-            $fieldsToUpdate['UpdatedDateTime'] = Carbon::now();
-            $fieldsToUpdate['Revision'] = $reservation->Revision + 1;
-            $reservation->update($fieldsToUpdate);
-            return response()->json(['status' => 'success','message' => 'Reservation updated successfully'], 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to update Reservation', 'details' => $e->getMessage()], 500);
+   public function updateReservation(Request $request)
+{
+    try {
+        $reservationId = $request->query('id');
+        if (!$reservationId) {
+            return response()->json(['error' => 'Reservation ID is required in query parameters'], 400);
         }
+
+        $user = Auth::user();
+        $userEmail = $user->email;
+
+        $reservation = TblTableReservation::findOrFail($reservationId);
+
+        $validator = Validator::make($request->all(), [
+            'SittingTableID' => 'nullable|integer|exists:tblsittingtables,id',
+            'SittingPlan' => 'nullable|integer',
+            'StartTime' => 'nullable|date',
+            'EndTime' => 'nullable|date|after:StartTime',
+            'ExtendedTime' => 'nullable|date|after:EndTime',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $fieldsToUpdate = $request->only([
+            'SittingTableID',
+            'SittingPlan',
+            'StartTime',
+            'EndTime',
+            'ExtendedTime',
+        ]);
+
+        $fieldsToUpdate['Updated_By'] = $userEmail;
+        $fieldsToUpdate['UpdatedDateTime'] = Carbon::now();
+        $fieldsToUpdate['Revision'] = $reservation->Revision + 1;
+
+        $reservation->update($fieldsToUpdate);
+
+        return response()->json(['status' => 'success', 'message' => 'Reservation updated successfully'], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to update Reservation', 'details' => $e->getMessage()], 500);
     }
+}
+
     
     public function deleteTableType(Request $request)
     {
@@ -622,7 +689,7 @@ public function updateSittingTable(Request $request)
     public function deleteReservation(Request $request)
 {
     try {
-        $id = $request->query('id'); // Get the 'id' from query parameters
+        $id = $request->query('id'); 
         if (!$id) {
             return response()->json(['error' => 'Reservation ID is required'], 400); }
         $reservation = TblTableReservation::findOrFail($id);
@@ -640,11 +707,10 @@ public function getTablesByReservationStatus(Request $request)
     try {
         $status = $request->query('status');
         $data = $request->query('data');
-
+        
         if (!in_array($status, ['all', '1', '0'])) {
             return response()->json(['error' => 'Invalid status parameter. Use "all", "1", or "0".'], 400);
         }
-
         $query = TblSittingTableS::query();
         if ($status !== 'all') {
             $query->where('isReserved', $status === '1' ? 1 : 0);
@@ -652,8 +718,6 @@ public function getTablesByReservationStatus(Request $request)
         if ($data) {
             $query->where('data', $data);
         }
-
-        // Fetch tables and format response with full image URL
         $tables = $query->get()->map(function ($table) {
             return [
                 'id' => $table->id,
@@ -689,25 +753,35 @@ public function createReservationPayment(Request $request)
             'ExtraSeatPrice' => 'required|numeric',
             'ExtendedTimePrice' => 'required|numeric',
             'TotalTime' => 'required|date_format:H:i:s',
-            'DiscountPercentage' => 'nullable|numeric|min:0',
-            'DiscountPrice' => 'nullable|numeric|min:0',
-            'TaxPercentage' => 'required|numeric|min:0',
-            'TaxPrice' => 'required|numeric|min:0',
-            'status' => 'required|in:pending,payment done,cancelled',
+            'DiscountPercentage' => 'nullable|numeric|min:0|max:100',
+            'TaxPercentage' => 'required|numeric|min:0|max:100',
+            'status' => 'nullable|in:pending,payment done,cancelled',
         ]);
+
+        // Default values
+        $validatedData['DiscountPercentage'] = $validatedData['DiscountPercentage'] ?? 0;
+        $validatedData['status'] = $validatedData['status'] ?? 'pending';
         $validatedData['Added_By'] = auth()->user()->email;
+
+        unset($validatedData['DiscountPrice']);
+        unset($validatedData['TaxPrice']);
+        unset($validatedData['TotalPrice']);
+
         ReservationPayment::create($validatedData);
-        return response()->json(['status' => 'success','message' => 'Reservation Payment created successfully'], 200);
+
+        return response()->json(['status' => 'success', 'message' => 'Reservation Payment created successfully'], 200);
     } catch (\Exception $e) {
         return response()->json(['error' => $e->getMessage()], 400);
     }
 }
 
+
+
 public function updateReservationPayment(Request $request)
 {
     try {
         $request->validate([
-            'id' => 'required|integer|exists:tblReservationPayment,id',
+            'id' => 'required|integer|exists:tblreservationpayment,id',
             'ActualPrice' => 'nullable|numeric',
             'ExtraSeatPrice' => 'nullable|numeric',
             'ExtendedTimePrice' => 'nullable|numeric',
@@ -826,7 +900,7 @@ public function createBrand(Request $request)
     public function updateCategory(Request $request)
 {
     try {
-        $id = $request->query('id'); // Get the id from query parameters
+        $id = $request->query('id'); 
         $category = TblCategory::findOrFail($id);
         $userEmail = Auth::user()->email;
         $category->update([
@@ -933,6 +1007,7 @@ public function getSubCategories()
         $subCategories = TblSubCategory::select('id', 'SubCategoryName')->get();
         return response()->json(['status' => 'success', 'data' => $subCategories], 200);
     } catch (\Exception $e) {
+     
         return response()->json(['error' => 'Failed to fetch sub-categories', 'details' => $e->getMessage()], 500);
     }
 }
@@ -978,12 +1053,11 @@ public function createProduct(Request $request)
             ], 400);
         }
 
-        // Handle image upload
         $imagePath = null;
         if (isset($request->ImagePath) && $request->ImagePath) {
             $file = base64_decode($request->ImagePath);
             $imageName = time() . '_' . uniqid() . '.png';
-            Storage::disk('public')->put($imageName, $file); // Save directly in public directory
+            Storage::disk('public')->put($imageName, $file); 
             $imagePath = $imageName;
         }
 
@@ -1055,7 +1129,7 @@ public function updateProduct(Request $request)
         if (isset($request->ImagePath) && $request->ImagePath) {
             $file = base64_decode($request->ImagePath);
             $imageName = time() . '_' . uniqid() . '.png';
-            Storage::disk('public')->put($imageName, $file); // Save directly in public directory
+            Storage::disk('public')->put($imageName, $file);
             $product->ImageName = $request->ImageName ?? $product->ImageName;
             $product->ImagePath = $imageName;
         }
@@ -1085,6 +1159,8 @@ public function updateProduct(Request $request)
 public function searchProducts(Request $request)
 {
     try {
+        $user = Auth::user(); // Get authenticated user
+
         $products = TblProducts::select(
             'id',
             'ProductCode',
@@ -1104,8 +1180,18 @@ public function searchProducts(Request $request)
             'Qty',
             'ImageName',
             'ImagePath'
-        )->get()->map(function ($product) {
+        )->get()->map(function ($product) use ($user) {
+            // Fetch isFavourite status from favourite table
+            $favourite = Favourite::where('UserID', $user->id)
+                ->where('ProductID', $product->id)
+                ->first();
+
+            // If exists, assign isFavourite value, else 0
+            $product->isFavourite = $favourite ? $favourite->isFavourite : 0;
+
+            // Format ImagePath URL
             $product->ImagePath = !empty($product->ImagePath) ? Storage::disk('public')->url($product->ImagePath) : null;
+
             return $product;
         });
 
@@ -1117,6 +1203,7 @@ public function searchProducts(Request $request)
         ], 500);
     }
 }
+
 
 public function deleteBrand(Request $request)
 {
@@ -1183,7 +1270,6 @@ public function createAllPayment(Request $request)
             'InvoiceNo' => 'required|string|max:100|unique:tblallpayments,InvoiceNo',
         ]);
     } catch (\Illuminate\Validation\ValidationException $e) {
-        
         $errors = $e->errors();
         if (isset($errors['ReservationID'])) {
             return response()->json(['message' => 'Reservation ID is invalid or not found'], 404);
@@ -1356,9 +1442,9 @@ public function deleteVendor(Request $request)
 public function createPurchase(Request $request)
 {
     $request->validate([
-        'VendorID' => 'required|exists:tblVendor,id',
-        'ProductID' => 'required|exists:tblProducts,id',
-        'InvoiceNo' => 'required|string|unique:tblPurchase,InvoiceNo|max:50',
+        'VendorID' => 'required|exists:tblvendor,id',
+        'ProductID' => 'required|exists:tblproducts,id',
+        'InvoiceNo' => 'required|string|max:50',
         'BatchNo' => 'required|string|max:50',
         'Qty' => 'required|numeric|min:1',
         'UnitPrice' => 'required|numeric|min:0',
@@ -1370,15 +1456,20 @@ public function createPurchase(Request $request)
         'ExpiryDate' => 'nullable|date|after:ActualDate',
     ]);
 
-    $user = Auth::user();
-    $userEmail = $user->email;
-    $machineName = gethostname();
+    $existingPurchase = Purchase::where('VendorID', $request->VendorID)
+        ->where('InvoiceNo', $request->InvoiceNo)
+        ->exists();
+   
+    if ($existingPurchase) {
+        return response()->json(['message' => 'Invoice number already exists for this Vendor.'], 422);
+    }
 
     try {
-        $existingPurchase = Purchase::where('InvoiceNo', $request->InvoiceNo)->first();
-        if ($existingPurchase) {
-            return response()->json(['status' => 'error', 'message' => 'Invoice number already exists.'], 409);
-        }
+        $user = Auth::user();
+        $userEmail = $user->email;
+        $machineName = gethostname();
+
+        // Calculate Tax and Discount
         $taxPrice = ($request->Qty * $request->UnitPrice) * ($request->TaxPercentage / 100);
         $discountPrice = ($request->Qty * $request->UnitPrice) * ($request->DiscountPercentage / 100);
         $totalPrice = ($request->Qty * $request->UnitPrice) + $taxPrice - $discountPrice;
@@ -1418,9 +1509,9 @@ public function updatePurchase(Request $request)
 {
     $request->validate([
         'id' => 'required|integer|exists:tblPurchase,id',
-        'VendorID' => 'nullable|integer|exists:tblVendor,id',
-        'ProductID' => 'nullable|integer|exists:tblProducts,id',
-        'InvoiceNo' => 'nullable|string|unique:tblPurchase,InvoiceNo,' . $request->id,
+        'VendorID' => 'nullable|integer|exists:tblvendor,id',
+        'ProductID' => 'nullable|integer|exists:tblproducts,id',
+        'InvoiceNo' => 'nullable|string|max:50',
         'BatchNo' => 'nullable|string',
         'Qty' => 'nullable|numeric|min:1',
         'UnitPrice' => 'nullable|numeric|min:0',
@@ -1473,21 +1564,81 @@ public function updatePurchase(Request $request)
 public function getPurchase(Request $request)
 {
     try {
+        $columns = [
+            'id', 'VendorID', 'ProductID', 'InvoiceNo', 'BatchNo', 'Qty', 'UnitPrice',
+            'TaxPercentage','TaxPrice', 'DiscountPercentage','DiscountPrice','TotalPrice', 'Remarks', 'Lock', 'IssuedtoStore',
+            'InvoiceDate', 'ActualDate', 'ExpiryDate'
+        ];
+
         if ($request->has('id')) {
-            // Fetch a single purchase record by ID
-            $purchase = Purchase::find($request->query('id'));
+            $purchase = Purchase::select($columns)
+                ->with(['vendor:id,VendorName', 'product:id,ProductName']) 
+                ->find($request->query('id'));
+
             if (!$purchase) {
                 return response()->json(['message' => 'Purchase not found'], 404);
             }
-            return response()->json(['status' => 'success', 'data' => $purchase], 200);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'id' => $purchase->id,
+                    'VendorID' => $purchase->VendorID,
+                    'VendorName' => $purchase->vendor->VendorName ?? null, 
+                    'ProductID' => $purchase->ProductID,
+                    'ProductName' => $purchase->product->ProductName ?? null, 
+                    'InvoiceNo' => $purchase->InvoiceNo,
+                    'BatchNo' => $purchase->BatchNo,
+                    'Qty' => $purchase->Qty,
+                    'UnitPrice' => $purchase->UnitPrice,
+                    'TaxPercentage' => $purchase->TaxPercentage,
+                    'DiscountPercentage' => $purchase->DiscountPercentage,
+                    'Remarks' => $purchase->Remarks,
+                    'Lock' => $purchase->Lock,
+                    'IssuedtoStore' => $purchase->IssuedtoStore,
+                    'InvoiceDate' => $purchase->InvoiceDate,
+                    'ActualDate' => $purchase->ActualDate,
+                    'ExpiryDate' => $purchase->ExpiryDate,
+                ]
+            ], 200);
         } else {
-            $purchases = Purchase::all();
-            return response()->json(['status' => 'success', 'data' => $purchases], 200);
+            $purchases = Purchase::select($columns)
+                ->with(['vendor:id,VendorName', 'product:id,ProductName']) 
+                ->get();
+
+            $purchaseData = $purchases->map(function ($purchase) {
+                return [
+                    'id' => $purchase->id,
+                    'VendorID' => $purchase->VendorID,
+                    'VendorName' => $purchase->vendor->VendorName ?? null,
+                    'ProductID' => $purchase->ProductID,
+                    'ProductName' => $purchase->product->ProductName ?? null,
+                    'InvoiceNo' => $purchase->InvoiceNo,
+                    'BatchNo' => $purchase->BatchNo,
+                    'Qty' => $purchase->Qty,
+                    'UnitPrice' => $purchase->UnitPrice,
+                    'TaxPercentage' => $purchase->TaxPercentage,
+                    'TaxPrice' => $purchase->TaxPrice,
+                    'DiscountPercentage' => $purchase->DiscountPercentage,
+                    'DiscountPrice' => $purchase->DiscountPrice,
+                    'TotalPrice' => $purchase->TotalPrice,
+                    'Remarks' => $purchase->Remarks,
+                    'Lock' => $purchase->Lock,
+                    'IssuedtoStore' => $purchase->IssuedtoStore,
+                    'InvoiceDate' => $purchase->InvoiceDate,
+                    'ActualDate' => $purchase->ActualDate,
+                    'ExpiryDate' => $purchase->ExpiryDate
+                ];
+            });
+
+            return response()->json(['status' => 'success', 'data' => $purchaseData], 200);
         }
     } catch (\Exception $e) {
         return response()->json(['message' => 'Error fetching purchases', 'error' => $e->getMessage()], 500);
     }
 }
+
+
 
 public function deletePurchase(Request $request)
 {
@@ -1561,168 +1712,44 @@ public function getPurchases(Request $request)
             return response()->json(['status' => 'error','message' => $e->getMessage(), ], 500);}
 }
 
-public function createCart(Request $request)
-    {
-        $request->validate([
-            'ReservationID' => 'nullable|integer|exists:tblTableReservation,id',
-            'ProductID' => 'required|integer|exists:tblProducts,id',
-            'SittingTableID' => 'required|integer|exists:tblSittingTables,id',
-            'UnitPrice' => 'required|numeric|min:0',
-            'Qty' => 'required|integer|min:1',
-            'TaxPrice' => 'required|numeric|min:0',
-            'DiscountPrice' => 'required|numeric|min:0',
-            'OrderType' => 'required|string|max:50',
-        ]);
 
-        $user = Auth::user();
-        $userEmail = $user->email;
-        $userID = $user->id;
-        $machineName = gethostname();
-
-        try {
-            $totalPrice = ($request->UnitPrice * $request->Qty) + $request->TaxPrice - $request->DiscountPrice;
-
-            $cart = Cart::create([
-                'UserID' => $userID,
-                'ReservationID' => $request->ReservationID,
-                'ProductID' => $request->ProductID,
-                'SittingTableID' => $request->SittingTableID,
-                'UnitPrice' => $request->UnitPrice,
-                'Qty' => $request->Qty,
-                'TaxPrice' => $request->TaxPrice,
-                'DiscountPrice' => $request->DiscountPrice,
-                'TotalPrice' => $totalPrice,
-                'PaymentStatus' => 'pending',
-                'OrderType' => $request->OrderType,
-                'Added_By' => $userEmail,
-                'AddedDateTime' => Carbon::now(),
-                'MachineName' => $machineName,
-                'Revision' => 0,
-            ]);
-
-            return response()->json(['status' => 'success', 'message' => 'Cart item added successfully'], 200);
-        } catch (\Exception $e) {
-            return response()->json(['message' => 'Error adding cart item', 'error' => $e->getMessage()], 500);
-        }
-    }
-
-    public function updateCart(Request $request)
-    {
-        $request->validate([
-            'OrderNo' => 'required|string|exists:tblCart,OrderNo',
-            'ReservationID' => 'nullable|integer|exists:tblTableReservation,id',
-            'ProductID' => 'nullable|integer|exists:tblProducts,id',
-            'SittingTableID' => 'nullable|integer|exists:tblSittingTables,id',
-            'UnitPrice' => 'nullable|numeric|min:0',
-            'Qty' => 'nullable|integer|min:1',
-            'TaxPrice' => 'nullable|numeric|min:0',
-            'DiscountPrice' => 'nullable|numeric|min:0',
-            'PaymentStatus' => 'nullable|in:pending,done',
-            'OrderType' => 'nullable|string|max:50',
-        ]);
-
-        $user = Auth::user();
-        $userEmail = $user->email;
-        $machineName = gethostname();
-
-        try {
-            $cart = Cart::where('OrderNo', $request->query('OrderNo'))->firstOrFail();
-
-            // Calculate total price if related fields are updated
-            $unitPrice = $request->input('UnitPrice', $cart->UnitPrice);
-            $qty = $request->input('Qty', $cart->Qty);
-            $taxPrice = $request->input('TaxPrice', $cart->TaxPrice);
-            $discountPrice = $request->input('DiscountPrice', $cart->DiscountPrice);
-            $totalPrice = ($unitPrice * $qty) + $taxPrice - $discountPrice;
-
-            $cart->update([
-                'ReservationID' => $request->input('ReservationID', $cart->ReservationID),
-                'ProductID' => $request->input('ProductID', $cart->ProductID),
-                'SittingTableID' => $request->input('SittingTableID', $cart->SittingTableID),
-                'UnitPrice' => $unitPrice,
-                'Qty' => $qty,
-                'TaxPrice' => $taxPrice,
-                'DiscountPrice' => $discountPrice,
-                'TotalPrice' => $totalPrice,
-                'PaymentStatus' => $request->input('PaymentStatus', $cart->PaymentStatus),
-                'OrderType' => $request->input('OrderType', $cart->OrderType),
-                'Updated_By' => $userEmail,
-                'UpdatedDateTime' => Carbon::now(),
-                'MachineName' => $machineName,
-                'Revision' => $cart->Revision + 1,
-            ]);
-
-            return response()->json(['status' => 'success', 'message' => 'Cart updated successfully'], 200);
-        } catch (\Exception $e) {
-            return response()->json(['message' => 'Error updating cart', 'error' => $e->getMessage()], 500);
-        }
-    }
-
-  
-    public function getCart(Request $request)
-    {
-        try {
-            if ($request->has('OrderNo')) {
-                $cart = Cart::where('OrderNo', $request->query('OrderNo'))->firstOrFail();
-                return response()->json(['status' => 'success', 'data' => $cart], 200);
-            } else {
-                $carts = Cart::all();
-                return response()->json(['status' => 'success', 'data' => $carts], 200);
-            }
-        } catch (\Exception $e) {
-            return response()->json(['message' => 'Error fetching cart data', 'error' => $e->getMessage()], 500);
-        }
-    }
-
-    // DELETE API: Delete Cart by OrderNo
-    public function deleteCart(Request $request)
-    {
-        $request->validate([
-            'OrderNo' => 'required|string|exists:tblCart,OrderNo',
-        ]);
-
-        try {
-            $cart = Cart::where('OrderNo', $request->query('OrderNo'))->firstOrFail();
-            $cart->delete();
-
-            return response()->json(['status' => 'success', 'message' => 'Cart deleted successfully'], 200);
-        } catch (\Exception $e) {
-            return response()->json(['message' => 'Error deleting cart', 'error' => $e->getMessage()], 500);
-        }
-    }
-
-    public function getReservations()
-    {
-        try {
-            $reservations = TblTableReservation::with(['user', 'sittingTable'])
-                ->get()
-                ->map(function ($reservation) {
-                    return [
-                        'id' => $reservation->id,
-                        'UserID' => $reservation->UserID,
-                        'UserName' => $reservation->user ? $reservation->user->first_name . ' ' . $reservation->user->last_name : null,
-                        'SittingTableID' => $reservation->SittingTableID,
-                        'TableName' => $reservation->sittingTable ? $reservation->sittingTable->TableName : null,
-                        'SittingPlan' => $reservation->SittingPlan,
-                        'ReservationNumber' => $reservation->ReservationNumber,
-                        'StartTime' => $reservation->StartTime,
-                        'EndTime' => $reservation->EndTime,
-                        'ExtendedTime' => $reservation->ExtendedTime,
-                        'Added_By' => $reservation->Added_By,
-                        'AddedDateTime' => $reservation->AddedDateTime,
-                        'Updated_By' => $reservation->Updated_By,
-                        'UpdatedDateTime' => $reservation->UpdatedDateTime,
-                        'Revision' => $reservation->Revision,
-                    ];
-                });
     
-            return response()->json(['status' => 'success', 'data' => $reservations], 200);
-        } catch (Exception $e) {
-            return response()->json(['error' => 'An error occurred while fetching reservations', 'details' => $e->getMessage()], 500);
+  public function getReservations(Request $request)
+{
+    try {
+        $query = TblTableReservation::with(['user', 'sittingTable:id,TableName,ImagePath']);
+
+        if ($request->has('UserID')) {
+            $query->where('UserID', $request->UserID);
         }
+
+        $reservations = $query->get()->map(function ($reservation) {
+            return [
+                'id' => $reservation->id,
+                'UserID' => $reservation->UserID,
+                'UserName' => $reservation->user ? $reservation->user->first_name . ' ' . $reservation->user->last_name : null,
+                'SittingTableID' => $reservation->SittingTableID,
+                'TableName' => $reservation->sittingTable ? $reservation->sittingTable->TableName : null,
+                'ImagePath' => $reservation->sittingTable && !empty($reservation->sittingTable->ImagePath)
+                    ? Storage::disk('public')->url($reservation->sittingTable->ImagePath)
+                    : null,
+                'SittingPlan' => $reservation->SittingPlan,
+                'ReservationNumber' => $reservation->ReservationNumber,
+                'StartTime' => $reservation->StartTime,
+                'EndTime' => $reservation->EndTime,
+                'ExtendedTime' => $reservation->ExtendedTime,
+            ];
+        });
+
+        return response()->json(['status' => 'success', 'data' => $reservations], 200);
+    } catch (Exception $e) {
+        return response()->json(['error' => 'An error occurred while fetching reservations', 'details' => $e->getMessage()], 500);
     }
-    
-    public function updatePurchaseLock(Request $request)
+}
+
+
+   
+public function updatePurchaseLock(Request $request)
 {
     $request->validate([
         'id' => 'required|integer|exists:tblPurchase,id',
@@ -1736,7 +1763,7 @@ public function createCart(Request $request)
         $purchase = Purchase::findOrFail($request->query('id'));
 
         $purchase->update([
-            'Lock' => 1, // Hardcoded to 1
+            'Lock' => 1, 
             'Updated_By' => $userEmail,
             'UpdatedDateTime' => Carbon::now(),
             'MachineName' => $machineName,
@@ -1762,11 +1789,9 @@ public function updateIssuedToStore(Request $request)
     try {
         $purchase = Purchase::findOrFail($request->query('id'));
         
-        // Fetch Qty and ProductID
         $qty = $purchase->Qty;
         $productID = $purchase->ProductID;
         
-        // Update IssuedtoStore to 1
         $purchase->update([
             'IssuedtoStore' => 1,
             'Updated_By' => $userEmail,
@@ -1775,7 +1800,6 @@ public function updateIssuedToStore(Request $request)
             'Revision' => $purchase->Revision + 1,
         ]);
 
-        // Update Qty in tblproducts
         $product = TblProducts::find($productID);
         if ($product) {
             $product->update([
@@ -1789,6 +1813,346 @@ public function updateIssuedToStore(Request $request)
     }
 }
 
+public function createOrder(Request $request)
+{
+    $validated = $request->validate([
+        'SittingTableID' => 'nullable|exists:tblsittingtables,id',
+        'ReservationID' => 'nullable|exists:tbltablereservation,id',
+        'PaymentStatus' => 'nullable|in:pending,cancel,done',
+        'OrderType' => 'nullable|string',
+        'OrderItems' => 'required|array|min:1',
+        'OrderItems.*.ProductID' => 'required|exists:tblproducts,id',
+        'OrderItems.*.Price' => 'required|numeric',
+        'OrderItems.*.Quantity' => 'required|integer|min:1',
+        'OrderItems.*.TaxPrice' => 'required|numeric',
+        'OrderItems.*.DiscountPrice' => 'required|numeric',
+    ]);
+
+    $user = auth()->user();
+    $userId = $user->id;
+    $userEmail = $user->email;
+    $machineName = gethostname();
+
+    \DB::beginTransaction();
+    try {
+        $order = Order::create([
+            'UserID' => $userId,
+            'SittingTableID' => $validated['SittingTableID'] ?? null,
+            'ReservationID' => $validated['ReservationID'] ?? null,
+            'OrderType' => $validated['OrderType'] ?? null,
+            'Added_By' => $userEmail,
+            'MachineName' => $machineName,
+            'Revision' => 0,
+        ]);
+
+        foreach ($validated['OrderItems'] as $item) {
+            $order->orderItems()->create([
+                'ProductID' => $item['ProductID'],
+                'Price' => $item['Price'],
+                'Quantity' => $item['Quantity'],
+                'TaxPrice' => $item['TaxPrice'],
+                'DiscountPrice' => $item['DiscountPrice'],
+            ]);
+        }
+
+        \DB::commit();
+
+        $order->refresh();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Order and items created successfully',
+            'data' => $order->load('orderItems'),
+        ], 200);
+
+    } catch (\Exception $e) {
+        \DB::rollBack();
+        return response()->json([
+            'status' => false,
+            'message' => 'Failed to create order: ' . $e->getMessage(),
+        ], 500);
+    }
+}
+
+public function getOrders(Request $request)
+{
+    try {
+        $validated = $request->validate([
+            'UserID' => 'required|exists:users,id'
+        ]);
+
+        $orders = Order::with(['orderItems.product', 'user'])
+            ->where('UserID', $validated['UserID'])
+            ->orderBy('OrderNo', 'desc')
+            ->get();
+
+        $orders = $orders->map(function ($order) {
+            $order->Username = optional($order->user) 
+                ? $order->user->first_name . ' ' . $order->user->last_name 
+                : null;
+
+            $order->order_items = $order->orderItems->map(function ($item) {
+                return [
+                    'ProductID' => $item->ProductID,
+                    'ProductName' => optional($item->product)->ProductName,
+                    'Price' => $item->Price,
+                    'Quantity' => $item->Quantity,
+                    'TaxPrice' => $item->TaxPrice,
+                    'DiscountPrice' => $item->DiscountPrice
+                ];
+            });
+
+            unset($order->user);
+            unset($order->orderItems);
+            return $order;
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Orders fetched successfully',
+            'data' => $orders
+        ]);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Validation failed',
+            'errors' => $e->errors()
+        ], 422);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Something went wrong: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+public function profileUpdate(Request $request)
+{
+    try {
+        $user = auth()->user(); // Fetch authenticated user from token
+
+        if (!$user) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        // Validation rules
+        $rules = [
+            'first_name' => 'sometimes|string|max:255',
+            'last_name' => 'sometimes|string|max:255',
+            'contact' => 'sometimes|string|max:15',
+            'location' => 'sometimes|string|max:255',
+            'age' => 'sometimes|integer|min:0',
+            'gender' => 'sometimes|in:male,female,other',
+            'language' => 'sometimes|array',
+            'country_preference' => 'sometimes|array',
+            'food_preference' => 'sometimes|array',
+            'profile_image' => 'sometimes|string', // Base64 image
+        ];
+
+        $validator = Validator::make($request->all(), $rules);
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 400);
+        }
+
+        // Store only provided fields
+        $updatedData = [];
+        foreach ($request->all() as $key => $value) {
+            if ($request->has($key) && !empty($value)) {
+                $updatedData[$key] = $value;
+            }
+        }
+
+        // Handle profile image
+        if ($request->has('profile_image') && $request->profile_image) {
+            $file = base64_decode($request->profile_image);
+            $profileImageName = time() . '_' . uniqid() . '.png';
+            Storage::disk('public')->put('profile_images/' . $profileImageName, $file);
+            $updatedData['profile_image'] = 'profile_images/' . $profileImageName;
+        }
+
+        // Update the user record in the database
+        $updated = $user->update($updatedData);
+
+        if (!$updated) {
+            return response()->json(['error' => 'Profile update failed'], 500);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Profile updated successfully',
+        ], 200);
+    } catch (\Exception $e) {
+        \Log::error('Update Profile Error: ' . $e->getMessage());
+        return response()->json(['error' => 'Failed to update profile', 'message' => $e->getMessage()], 500);
+    }
+}
+
+public function getProfile(Request $request)
+{
+    try {
+        $user = auth()->user(); // Get authenticated user
+
+        if (!$user) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                [
+                    'first_name' => $user->first_name,
+                    'last_name' => $user->last_name,
+                    'contact' => $user->contact,
+                    'location' => $user->location,
+                    'age' => $user->age,
+                    'gender' => $user->gender,
+                    'language' => $user->language,
+                    'country_preference' => $user->country_preference,
+                    'food_preference' => $user->food_preference,
+                    'profile_image' => $user->profile_image ? asset('storage/' . $user->profile_image) : null,
+                ]
+            ]
+        ], 200);
+    } catch (\Exception $e) {
+        \Log::error('Get Profile Error: ' . $e->getMessage());
+        return response()->json(['error' => 'Failed to retrieve profile', 'message' => $e->getMessage()], 500);
+    }
+}
+
+
+public function deleteUser(Request $request)
+{
+    try {
+        $user = auth()->user(); 
+        
+        if (!$user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'User not found.'
+            ], 404);
+        }
+
+        $user->tokens()->delete(); 
+        $user->delete(); 
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User deleted successfully.'
+        ], 200);
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => $e->getMessage(),
+        ], 500);
+    }
+}
+
+
+public function getCategoriesWithItems()
+{
+    try {
+        $categories = DB::table('tblCategories')
+            ->leftJoin('tblItems', 'tblCategories.id', '=', 'tblItems.category_id')
+            ->select('tblCategories.category_name', 'tblItems.item_name')
+            ->get();
+
+        $formattedData = [];
+
+        foreach ($categories as $category) {
+            $formattedData[$category->category_name][] = $category->item_name;
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $formattedData
+        ], 200);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'message' => 'An error occurred while fetching data',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
+public function toggleFavourite(Request $request)
+    {
+        $user = Auth::user(); // Get authenticated user
+        $productID = $request->query('ProductID'); // Get ProductID from query parameter
+
+        if (!$productID) {
+            return response()->json(['message' => 'ProductID is required'], 400);
+        }
+
+        // Find if the favourite entry exists
+        $favourite = Favourite::where('UserID', $user->id)
+            ->where('ProductID', $productID)
+            ->first();
+
+        if ($favourite) {
+            // Toggle isFavourite
+            $favourite->isFavourite = $favourite->isFavourite ? 0 : 1;
+            $favourite->save();
+        } else {
+            // Create new entry with isFavourite = 1
+            Favourite::create([
+                'UserID' => $user->id,
+                'ProductID' => $productID,
+                'isFavourite' => 1,
+            ]);
+        }
+
+        return response()->json(['status'=>'success','message' => 'Favourite status updated successfully'], 200);
+    }
+
+public function getFavouriteProducts(Request $request)
+{
+    try {
+        $user = Auth::user(); // Get authenticated user
+
+        $products = TblProducts::select(
+            'tblproducts.id',
+            'tblproducts.ProductCode',
+            'tblproducts.ProductName',
+            'tblproducts.BID',
+            'tblproducts.CID',
+            'tblproducts.SCID',
+            'tblproducts.SSCID',
+            'tblproducts.PurchasedPrice',
+            'tblproducts.SalePrice1',
+            'tblproducts.SalePrice2',
+            'tblproducts.DiscountPercentage',
+            'tblproducts.ActiveDiscount',
+            'tblproducts.ExpiryDate',
+            'tblproducts.RackNo',
+            'tblproducts.ReorderLevel',
+            'tblproducts.Qty',
+            'tblproducts.ImageName',
+            'tblproducts.ImagePath',
+            'favourite.isFavourite' 
+        )
+        ->join('favourite', function ($join) use ($user) {
+            $join->on('tblproducts.id', '=', 'favourite.ProductID')
+                ->where('favourite.UserID', $user->id)
+                ->where('favourite.isFavourite', 1); 
+        })
+        ->get()
+        ->map(function ($product) {
+            // Format ImagePath URL
+            $product->ImagePath = !empty($product->ImagePath) ? Storage::disk('public')->url($product->ImagePath) : null;
+            return $product;
+        });
+
+        return response()->json(['status' => 'success', 'data' => $products], 200);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'An error occurred while fetching favorite products',
+            'message' => $e->getMessage(),
+        ], 500);
+    }
+}
 
 
 

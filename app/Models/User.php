@@ -50,4 +50,10 @@ class User extends Model
         'country_preference' => 'array',
         'food_preference' => 'array',
     ];
+
+    public function favourites()
+{
+    return $this->hasMany(Favourite::class, 'UserID');
+}
+
 }
