@@ -200,7 +200,6 @@ public function generateOtp(Request $request)
             ['otp' => $otp, 'expires_at' => $expiresAt]
         );
 
-        // Send the OTP email
         try {
             Mail::to($request->email)->send(new SendOtpMail($otp));
             Log::info('OTP generated and email sent', ['email' => $request->email, 'otp' => $otp]);
@@ -281,9 +280,12 @@ public function getTableTypes()
             'SittingCapacity' => 'required|integer',
             'SittingPlan' => 'required|integer',
             'TableTypeID' => 'required|integer',
-            'ActualPrice' => 'required|integer',
-            'ExtraSeatPrice' => 'required|integer',
-            'ExtendedPricePerHour' => 'required|integer',
+            'ActualPrice' => 'required|numeric',
+            'ExtraSeatPrice' => 'required|numeric',
+            'ExtendedPricePerHour' => 'required|numeric',
+            'ExtraSeat' => 'nullable|integer',
+            'SeatDiscount' => 'nullable|numeric',
+            'ExtraSeatDiscount' => 'nullable|numeric',
             'ImageName' => 'required|string|max:100', 
             'Image' => 'required|string', 
         ]);
@@ -315,9 +317,12 @@ public function getTableTypes()
             'ActualPrice' => $request->ActualPrice,
             'ExtraSeatPrice' => $request->ExtraSeatPrice,
             'ExtendedPricePerHour' => $request->ExtendedPricePerHour,
+            'ExtraSeat' => $request->ExtraSeat ?? 0,
+            'SeatDiscount' => $request->SeatDiscount ?? 0,
+            'ExtraSeatDiscount' => $request->ExtraSeatDiscount ?? 0,
             'Added_By' => Auth::user()->email,
             'ImageName' => $request->ImageName,
-            'ImagePath' => $fileName, 
+            'ImagePath' => $fileName,
             'Revision' => 0,
         ]);
 
@@ -330,6 +335,8 @@ public function getTableTypes()
     }
 }
 
+  
+  
 public function getSittingTables()
 {
     try {
@@ -516,6 +523,12 @@ public function updateSittingTable(Request $request)
             'show' => 'sometimes|boolean',
             'ImageName' => 'sometimes|string|max:100',
             'Image' => 'sometimes|string', 
+            'ActualPrice' => 'sometimes|numeric',
+            'ExtraSeat' => 'sometimes|integer',
+            'ExtraSeatPrice' => 'sometimes|numeric',
+            'SeatDiscount' => 'sometimes|numeric',
+            'ExtraSeatDiscount' => 'sometimes|numeric',
+            'ExtendedPricePerHour' => 'sometimes|numeric',
         ];
 
         $validator = Validator::make($request->all(), $rules);
@@ -546,6 +559,26 @@ public function updateSittingTable(Request $request)
         if ($request->has('show')) {
             $updateData['show'] = (int) $request->input('show');
         }
+        
+        if ($request->has('ActualPrice')) {
+            $updateData['ActualPrice'] = $request->input('ActualPrice');
+       }
+       if ($request->has('ExtraSeat')) {
+           $updateData['ExtraSeat'] = $request->input('ExtraSeat');
+       }
+       if ($request->has('ExtraSeatPrice')) {
+           $updateData['ExtraSeatPrice'] = $request->input('ExtraSeatPrice');
+       }
+       if ($request->has('SeatDiscount')) {
+           $updateData['SeatDiscount'] = $request->input('SeatDiscount');
+       }
+       if ($request->has('ExtraSeatDiscount')) {
+           $updateData['ExtraSeatDiscount'] = $request->input('ExtraSeatDiscount');
+       }
+       if ($request->has('ExtendedPricePerHour')) {
+           $updateData['ExtendedPricePerHour'] = $request->input('ExtendedPricePerHour');
+       }
+       
 
         if ($request->has('Image') && $request->Image) {
             $file = base64_decode($request->Image);
@@ -764,6 +797,7 @@ public function getTablesByReservationStatus(Request $request)
                 'ActualPrice' => $table->ActualPrice,
                 'ExtraSeatPrice' => $table->ExtraSeatPrice,
                 'ExtendedPricePerHour' => $table->ExtendedPricePerHour,
+                'TotalPrice'=>$table->TotalPrice,
                 'isReserved' => $table->isReserved,
                 'ImagePath' => !empty($table->ImagePath) ? Storage::disk('public')->url($table->ImagePath) : null,
                 'Added_By' => $table->Added_By,
@@ -1223,11 +1257,8 @@ public function searchProducts(Request $request)
             $favourite = Favourite::where('UserID', $user->id)
                 ->where('ProductID', $product->id)
                 ->first();
-
-            // If exists, assign isFavourite value, else 0
             $product->isFavourite = $favourite ? $favourite->isFavourite : 0;
 
-            // Format ImagePath URL
             $product->ImagePath = !empty($product->ImagePath) ? Storage::disk('public')->url($product->ImagePath) : null;
 
             return $product;
@@ -1969,13 +2000,12 @@ public function getOrders(Request $request)
 public function profileUpdate(Request $request)
 {
     try {
-        $user = auth()->user(); // Fetch authenticated user from token
+        $user = auth()->user(); 
 
         if (!$user) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        // Validation rules
         $rules = [
             'first_name' => 'sometimes|string|max:255',
             'last_name' => 'sometimes|string|max:255',
