@@ -9,7 +9,7 @@ class TblSittingTableS extends Model
 {
     use HasFactory;
 
-    protected $table = 'tblSittingTableS';
+    protected $table = 'tblsittingtables';
 
     public $timestamps = false; 
     
@@ -19,6 +19,9 @@ class TblSittingTableS extends Model
         'SittingCapacity',
         'SittingPlan',
         'TableTypeID',
+        'ActualPrice',
+        'ExtraSeatPrice',
+        'ExtendedPricePerHour',
         'isReserved',
         'show',
         'Added_By',

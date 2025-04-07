@@ -9,10 +9,9 @@ class ReservationPayment extends Model
 {
     use HasFactory;
 
-    // Table Name
     protected $table = 'tblReservationPayment';
     public $timestamps = false; 
-    // Fillable Fields for Mass Assignment
+
     protected $fillable = [
         'ReservationID',
         'ActualPrice',

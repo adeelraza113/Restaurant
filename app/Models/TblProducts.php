@@ -38,10 +38,10 @@ class TblProducts extends Model
         'Revision',
     ];
 
-    // Disable timestamps since we use custom AddedDateTime and UpdatedDateTime
+    
     public $timestamps = false;
 
-    // Relationships with foreign keys
+
     public function category()
     {
         return $this->belongsTo(TblCategory::class, 'CID');

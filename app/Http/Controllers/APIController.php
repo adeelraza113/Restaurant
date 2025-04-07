@@ -281,6 +281,9 @@ public function getTableTypes()
             'SittingCapacity' => 'required|integer',
             'SittingPlan' => 'required|integer',
             'TableTypeID' => 'required|integer',
+            'ActualPrice' => 'required|integer',
+            'ExtraSeatPrice' => 'required|integer',
+            'ExtendedPricePerHour' => 'required|integer',
             'ImageName' => 'required|string|max:100', 
             'Image' => 'required|string', 
         ]);
@@ -309,6 +312,9 @@ public function getTableTypes()
             'SittingCapacity' => $request->SittingCapacity,
             'SittingPlan' => $request->SittingPlan,
             'TableTypeID' => $request->TableTypeID,
+            'ActualPrice' => $request->ActualPrice,
+            'ExtraSeatPrice' => $request->ExtraSeatPrice,
+            'ExtendedPricePerHour' => $request->ExtendedPricePerHour,
             'Added_By' => Auth::user()->email,
             'ImageName' => $request->ImageName,
             'ImagePath' => $fileName, 
@@ -327,7 +333,7 @@ public function getTableTypes()
 public function getSittingTables()
 {
     try {
-        $sittingTables = tblsittingtables::select('id', 'TableName', 'TableNo', 'SittingCapacity', 'SittingPlan', 'ImagePath')
+        $sittingTables = tblsittingtables::select('id', 'TableName', 'TableNo', 'SittingCapacity', 'SittingPlan', 'ActualPrice', 'ExtraSeatPrice', 'ExtendedPricePerHour', 'ImagePath')
             ->get()
             ->map(function ($table) {
                 return [
@@ -336,6 +342,9 @@ public function getSittingTables()
                     'TableNo' => $table->TableNo,
                     'SittingCapacity' => $table->SittingCapacity,
                     'SittingPlan' => $table->SittingPlan,
+                    'ActualPrice' => $table->ActualPrice,
+                    'ExtraSeatPrice' => $table->ExtraSeatPrice,
+                    'ExtendedPricePerHour' => $table->ExtendedPricePerHour,
                     'ImagePath' => !empty($table->ImagePath) ? Storage::disk('public')->url($table->ImagePath) : null,
                 ];
             });
@@ -686,21 +695,47 @@ public function updateSittingTable(Request $request)
         }
     }
     
-    public function deleteReservation(Request $request)
+public function deleteReservation(Request $request)
 {
     try {
-        $id = $request->query('id'); 
+        // Step 1: Get reservation ID from query parameters
+        $id = $request->query('id');
+
         if (!$id) {
-            return response()->json(['error' => 'Reservation ID is required'], 400); }
+            return response()->json(['error' => 'Reservation ID is required'], 400);
+        }
+
+        // Step 2: Find reservation
         $reservation = TblTableReservation::findOrFail($id);
+
+        // Step 3: Get SittingTableID from the reservation
+        $sittingTableId = $reservation->SittingTableID;
+
+        // Step 4: Update isReserved in tblSittingTables
+        $sittingTable = TblSittingTableS::find($sittingTableId);
+        if ($sittingTable) {
+            $sittingTable->isReserved = 0;
+            $sittingTable->save();
+        }
+
+        // Step 5: Delete reservation
         $reservation->delete();
-        return response()->json(['status'=>'success','message' => 'Reservation deleted successfully'], 200);
-    }catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-        return response()->json(['error' => 'Reservation Table id not found'], 404);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Reservation deleted and table marked as available'
+        ], 200);
+
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        return response()->json(['error' => 'Reservation not found'], 404);
     } catch (\Exception $e) {
-        return response()->json(['error' => 'Failed to delete reservation', 'details' => $e->getMessage()], 500);
+        return response()->json([
+            'error' => 'Failed to delete reservation',
+            'details' => $e->getMessage()
+        ], 500);
     }
 }
+
 
 public function getTablesByReservationStatus(Request $request)
 {
@@ -726,6 +761,9 @@ public function getTablesByReservationStatus(Request $request)
                 'SittingCapacity' => $table->SittingCapacity,
                 'SittingPlan' => $table->SittingPlan,
                 'TableTypeID' => $table->TableTypeID,
+                'ActualPrice' => $table->ActualPrice,
+                'ExtraSeatPrice' => $table->ExtraSeatPrice,
+                'ExtendedPricePerHour' => $table->ExtendedPricePerHour,
                 'isReserved' => $table->isReserved,
                 'ImagePath' => !empty($table->ImagePath) ? Storage::disk('public')->url($table->ImagePath) : null,
                 'Added_By' => $table->Added_By,
@@ -1948,7 +1986,7 @@ public function profileUpdate(Request $request)
             'language' => 'sometimes|array',
             'country_preference' => 'sometimes|array',
             'food_preference' => 'sometimes|array',
-            'profile_image' => 'sometimes|string', // Base64 image
+            'profile_image' => 'sometimes|string', 
         ];
 
         $validator = Validator::make($request->all(), $rules);
@@ -1956,7 +1994,6 @@ public function profileUpdate(Request $request)
             return response()->json(['errors' => $validator->errors()], 400);
         }
 
-        // Store only provided fields
         $updatedData = [];
         foreach ($request->all() as $key => $value) {
             if ($request->has($key) && !empty($value)) {
@@ -1964,7 +2001,6 @@ public function profileUpdate(Request $request)
             }
         }
 
-        // Handle profile image
         if ($request->has('profile_image') && $request->profile_image) {
             $file = base64_decode($request->profile_image);
             $profileImageName = time() . '_' . uniqid() . '.png';
@@ -1992,7 +2028,7 @@ public function profileUpdate(Request $request)
 public function getProfile(Request $request)
 {
     try {
-        $user = auth()->user(); // Get authenticated user
+        $user = auth()->user(); 
 
         if (!$user) {
             return response()->json(['error' => 'Unauthorized'], 401);
@@ -2079,24 +2115,22 @@ public function getCategoriesWithItems()
 
 public function toggleFavourite(Request $request)
     {
-        $user = Auth::user(); // Get authenticated user
-        $productID = $request->query('ProductID'); // Get ProductID from query parameter
+        $user = Auth::user(); 
+        $productID = $request->query('ProductID'); 
 
         if (!$productID) {
             return response()->json(['message' => 'ProductID is required'], 400);
         }
 
-        // Find if the favourite entry exists
         $favourite = Favourite::where('UserID', $user->id)
             ->where('ProductID', $productID)
             ->first();
 
         if ($favourite) {
-            // Toggle isFavourite
             $favourite->isFavourite = $favourite->isFavourite ? 0 : 1;
             $favourite->save();
         } else {
-            // Create new entry with isFavourite = 1
+          
             Favourite::create([
                 'UserID' => $user->id,
                 'ProductID' => $productID,
@@ -2110,7 +2144,7 @@ public function toggleFavourite(Request $request)
 public function getFavouriteProducts(Request $request)
 {
     try {
-        $user = Auth::user(); // Get authenticated user
+        $user = Auth::user(); 
 
         $products = TblProducts::select(
             'tblproducts.id',
@@ -2140,7 +2174,6 @@ public function getFavouriteProducts(Request $request)
         })
         ->get()
         ->map(function ($product) {
-            // Format ImagePath URL
             $product->ImagePath = !empty($product->ImagePath) ? Storage::disk('public')->url($product->ImagePath) : null;
             return $product;
         });
@@ -2153,6 +2186,143 @@ public function getFavouriteProducts(Request $request)
         ], 500);
     }
 }
+
+public function getUserOrders(Request $request)
+{
+    try {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Unauthorized access'
+            ], 401);
+        }
+
+        $orders = Order::with(['orderItems.product', 'user'])
+            ->where('UserID', $user->id)
+            ->orderBy('OrderNo', 'desc')
+            ->get();
+
+        $orders = $orders->map(function ($order) {
+            $order->Username = optional($order->user) 
+                ? $order->user->first_name . ' ' . $order->user->last_name 
+                : null;
+
+            $order->order_items = $order->orderItems->map(function ($item) {
+                return [
+                    'ProductID' => $item->ProductID,
+                    'ProductName' => optional($item->product)->ProductName,
+                    'Price' => $item->Price,
+                    'Quantity' => $item->Quantity,
+                    'TaxPrice' => $item->TaxPrice,
+                    'DiscountPrice' => $item->DiscountPrice
+                ];
+            });
+
+            unset($order->user);
+            unset($order->orderItems);
+            return $order;
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Orders fetched successfully',
+            'data' => $orders
+        ]);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Something went wrong: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+public function getUserReservations(Request $request)
+{
+    try {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Unauthorized access'
+            ], 401);
+        }
+
+        $reservations = TblTableReservation::with(['user', 'sittingTable:id,TableName,ImagePath'])
+            ->where('UserID', $user->id)
+            ->get()
+            ->map(function ($reservation) {
+                return [
+                    'id' => $reservation->id,
+                    'UserID' => $reservation->UserID,
+                    'UserName' => $reservation->user ? $reservation->user->first_name . ' ' . $reservation->user->last_name : null,
+                    'SittingTableID' => $reservation->SittingTableID,
+                    'TableName' => $reservation->sittingTable ? $reservation->sittingTable->TableName : null,
+                    'ImagePath' => $reservation->sittingTable && !empty($reservation->sittingTable->ImagePath)
+                        ? Storage::disk('public')->url($reservation->sittingTable->ImagePath)
+                        : null,
+                    'SittingPlan' => $reservation->SittingPlan,
+                    'ReservationNumber' => $reservation->ReservationNumber,
+                    'StartTime' => $reservation->StartTime,
+                    'EndTime' => $reservation->EndTime,
+                    'ExtendedTime' => $reservation->ExtendedTime,
+                ];
+            });
+
+        return response()->json(['status' => 'success', 'data' => $reservations], 200);
+    } catch (Exception $e) {
+        return response()->json([
+            'status' => false,
+            'message' => 'An error occurred while fetching reservations',
+            'details' => $e->getMessage()
+        ], 500);
+    }
+}
+
+public function deleteOrder(Request $request)
+{
+    $orderId = $request->query('OrderNo');
+
+    if (!$orderId) {
+        return response()->json([
+            'status' => false,
+            'message' => 'OrderNo query parameter is required.',
+        ], 400);
+    }
+
+    $order = Order::find($orderId);
+
+    if (!$order) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Order not found.',
+        ], 404);
+    }
+
+    \DB::beginTransaction();
+    try {
+        $order->delete(); 
+
+        \DB::commit();
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Order and associated items deleted successfully.',
+        ], 200);
+
+    } catch (\Exception $e) {
+        \DB::rollBack();
+        return response()->json([
+            'status' => false,
+            'message' => 'Failed to delete order: ' . $e->getMessage(),
+        ], 500);
+    }
+}
+
+
+
 
 
 
