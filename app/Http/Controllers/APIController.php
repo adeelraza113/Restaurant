@@ -283,9 +283,6 @@ public function getTableTypes()
             'ActualPrice' => 'required|numeric',
             'ExtraSeatPrice' => 'required|numeric',
             'ExtendedPricePerHour' => 'required|numeric',
-            'ExtraSeat' => 'nullable|integer',
-            'SeatDiscount' => 'nullable|numeric',
-            'ExtraSeatDiscount' => 'nullable|numeric',
             'ImageName' => 'required|string|max:100', 
             'Image' => 'required|string', 
         ]);
@@ -317,9 +314,6 @@ public function getTableTypes()
             'ActualPrice' => $request->ActualPrice,
             'ExtraSeatPrice' => $request->ExtraSeatPrice,
             'ExtendedPricePerHour' => $request->ExtendedPricePerHour,
-            'ExtraSeat' => $request->ExtraSeat ?? 0,
-            'SeatDiscount' => $request->SeatDiscount ?? 0,
-            'ExtraSeatDiscount' => $request->ExtraSeatDiscount ?? 0,
             'Added_By' => Auth::user()->email,
             'ImageName' => $request->ImageName,
             'ImagePath' => $fileName,
@@ -419,7 +413,7 @@ public function getSittingTables()
 
 
 
-   public function createReservation(Request $request)
+public function createReservation(Request $request)
 {
     try {
         $user = Auth::user();
@@ -439,14 +433,16 @@ public function getSittingTables()
         $validator = Validator::make([
             'SittingTableID' => $request->SittingTableID,
             'SittingPlan' => $request->SittingPlan,
+            'ExtraSeat' => $request->ExtraSeat,
             'StartTime' => $startTime,
             'EndTime' => $endTime,
             'ExtendedTime' => $extendedTime,
         ], [
             'SittingTableID' => 'required|integer|exists:tblsittingtables,id',
             'SittingPlan' => 'required|integer',
-            'StartTime' => 'required|date',
-            'EndTime' => 'required|date|after:StartTime',
+            'ExtraSeat' => 'nullable|integer|min:0',
+            'StartTime' => 'required',
+            'EndTime' => 'required|after:StartTime',
             'ExtendedTime' => 'nullable|date|after:EndTime',
         ]);
 
@@ -456,16 +452,25 @@ public function getSittingTables()
 
         $nextId = DB::table('tbltablereservation')->max('id') + 1;
         $reservationNumber = 'T-' . $userId . '-' . $nextId;
+        $sittingTable = DB::table('tblsittingtables')->where('id', $request->SittingTableID)->first();
+
+        $extraSeatPrice = $sittingTable->ExtraSeatPrice ?? 0;
+        $actualPrice = $sittingTable->ActualPrice ?? 0;
+        $extraSeats = $request->ExtraSeat ?? 0;
+
+        $totalPrice = ($extraSeats * $extraSeatPrice) + $actualPrice;        
 
         $reservation = TblTableReservation::create([
             'UserID' => $userId,
             'SittingTableID' => $request->SittingTableID,
             'SittingPlan' => $request->SittingPlan,
+            'ExtraSeat' => $request->ExtraSeat, 
             'ReservationNumber' => $reservationNumber,
             'StartTime' => $startTime,
             'EndTime' => $endTime,
             'ExtendedTime' => $extendedTime,
             'Added_By' => $userEmail,
+            'TotalPrice' => $totalPrice,
         ]);
 
         DB::table('tblsittingtables')
@@ -481,6 +486,7 @@ public function getSittingTables()
         ], 500);
     }
 }
+
 
    
     public function updateTableType(Request $request)
@@ -563,9 +569,6 @@ public function updateSittingTable(Request $request)
         if ($request->has('ActualPrice')) {
             $updateData['ActualPrice'] = $request->input('ActualPrice');
        }
-       if ($request->has('ExtraSeat')) {
-           $updateData['ExtraSeat'] = $request->input('ExtraSeat');
-       }
        if ($request->has('ExtraSeatPrice')) {
            $updateData['ExtraSeatPrice'] = $request->input('ExtraSeatPrice');
        }
@@ -638,7 +641,7 @@ public function updateSittingTable(Request $request)
         }
     }
     
-   public function updateReservation(Request $request)
+public function updateReservation(Request $request)
 {
     try {
         $reservationId = $request->query('id');
@@ -651,12 +654,15 @@ public function updateSittingTable(Request $request)
 
         $reservation = TblTableReservation::findOrFail($reservationId);
 
+        // Validate the incoming request data
         $validator = Validator::make($request->all(), [
             'SittingTableID' => 'nullable|integer|exists:tblsittingtables,id',
             'SittingPlan' => 'nullable|integer',
             'StartTime' => 'nullable|date',
             'EndTime' => 'nullable|date|after:StartTime',
             'ExtendedTime' => 'nullable|date|after:EndTime',
+            'ExtraSeat' => 'nullable|integer|min:0',
+            'TotalPrice' => 'nullable|numeric',
         ]);
 
         if ($validator->fails()) {
@@ -669,19 +675,51 @@ public function updateSittingTable(Request $request)
             'StartTime',
             'EndTime',
             'ExtendedTime',
+            'ExtraSeat',
+            'TotalPrice',  // Make sure to include TotalPrice in the update request
         ]);
 
+        // If SittingTableID or ExtraSeat is changed, update TotalPrice, unless TotalPrice is manually set
+        if ($request->has('SittingTableID') || $request->has('ExtraSeat')) {
+            // If TotalPrice is not provided manually, recalculate it
+            if (!$request->has('TotalPrice')) {
+                // Use existing values if not provided in the request
+                $sittingTableId = $request->SittingTableID ?? $reservation->SittingTableID;
+                $extraSeats = $request->ExtraSeat ?? $reservation->ExtraSeat;
+
+                // Get the sitting table data (ExtraSeatPrice and ActualPrice)
+                $sittingTable = DB::table('tblsittingtables')->where('id', $sittingTableId)->first();
+                
+                // Ensure valid values are retrieved
+                $extraSeatPrice = $sittingTable->ExtraSeatPrice ?? 0;
+                $actualPrice = $sittingTable->ActualPrice ?? 0;
+
+                // Calculate TotalPrice
+                $fieldsToUpdate['TotalPrice'] = $actualPrice + ($extraSeats * $extraSeatPrice);
+            }
+        }
+
+        // Set Updated By and Revision for tracking changes
         $fieldsToUpdate['Updated_By'] = $userEmail;
         $fieldsToUpdate['UpdatedDateTime'] = Carbon::now();
         $fieldsToUpdate['Revision'] = $reservation->Revision + 1;
 
+        // Update the reservation record
         $reservation->update($fieldsToUpdate);
 
-        return response()->json(['status' => 'success', 'message' => 'Reservation updated successfully'], 200);
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Reservation updated successfully'
+        ], 200);
+
     } catch (\Exception $e) {
-        return response()->json(['error' => 'Failed to update Reservation', 'details' => $e->getMessage()], 500);
+        return response()->json([
+            'error' => 'Failed to update Reservation',
+            'details' => $e->getMessage()
+        ], 500);
     }
 }
+
 
     
     public function deleteTableType(Request $request)
@@ -1803,6 +1841,8 @@ public function getPurchases(Request $request)
                     ? Storage::disk('public')->url($reservation->sittingTable->ImagePath)
                     : null,
                 'SittingPlan' => $reservation->SittingPlan,
+                'TotalPrice'=> $reservation->TotalPrice,
+                'ExtraSeat' => $reservation->ExtraSeat,
                 'ReservationNumber' => $reservation->ReservationNumber,
                 'StartTime' => $reservation->StartTime,
                 'EndTime' => $reservation->EndTime,
@@ -2038,7 +2078,6 @@ public function profileUpdate(Request $request)
             $updatedData['profile_image'] = 'profile_images/' . $profileImageName;
         }
 
-        // Update the user record in the database
         $updated = $user->update($updatedData);
 
         if (!$updated) {
@@ -2350,6 +2389,50 @@ public function deleteOrder(Request $request)
         ], 500);
     }
 }
+
+public function getAllOrders()
+{
+    try {
+        $orders = Order::with(['orderItems.product', 'user'])
+            ->orderBy('OrderNo', 'desc')
+            ->get();
+
+        $orders = $orders->map(function ($order) {
+            $order->Username = optional($order->user)
+                ? $order->user->first_name . ' ' . $order->user->last_name
+                : null;
+
+            $order->order_items = $order->orderItems->map(function ($item) {
+                return [
+                    'ProductID' => $item->ProductID,
+                    'ProductName' => optional($item->product)->ProductName,
+                    'Price' => $item->Price,
+                    'Quantity' => $item->Quantity,
+                    'TaxPrice' => $item->TaxPrice,
+                    'DiscountPrice' => $item->DiscountPrice
+                ];
+            });
+
+            unset($order->user);
+            unset($order->orderItems);
+            return $order;
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'All orders fetched successfully',
+            'data' => $orders
+        ]);
+        
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Something went wrong: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+
 
 
 

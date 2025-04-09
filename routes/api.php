@@ -75,11 +75,13 @@ Route::middleware('auth:sanctum')->group(function () {
     
    Route::post('/orders', [APIController::class, 'createOrder']);
    Route::get('/orders', [APIController::class, 'getOrders']);
+    Route::get('/order-history', [APIController::class, 'getUserOrders']);
     
    
    Route::get('/reservation', [APIController::class, 'getReservations']);
    Route::put('/purchase', [APIController::class, 'updatePurchaseLock']);
    Route::put('/purchase-store', [APIController::class, 'updateIssuedToStore']);
+    Route::get('/reservation-history', [APIController::class, 'getUserReservations']);
    
    Route::put('/profile', [APIController::class, 'profileUpdate']);
    Route::get('/profile', [APIController::class, 'getProfile']);
@@ -88,6 +90,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/food', [APIController::class, 'getCategoriesWithItems']);
     Route::post('/favourite', [APIController::class, 'toggleFavourite']);
     Route::get('/favourite', [APIController::class, 'getFavouriteProducts']);
+
+   Route::delete('/order', [APIController::class, 'deleteOrder']);
+   Route::get('/all-orders', [APIController::class, 'getAllOrders']);
+
 
 
 
