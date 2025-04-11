@@ -24,4 +24,11 @@ class OrderItem extends Model
     {
         return $this->belongsTo(Order::class, 'OrderNo', 'OrderNo');
     }
+    
+public function product()
+{
+    return $this->belongsTo(TblProducts::class, 'ProductID');
+}
+
+    
 }
