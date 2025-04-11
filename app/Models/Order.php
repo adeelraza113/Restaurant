@@ -13,8 +13,6 @@ class Order extends Model
         'UserID',
         'SittingTableID',
         'ReservationID',
-        'TotalPrice',
-        'PaymentStatus',
         'OrderType',
         'Added_By',
         'AddedDateTime',
@@ -28,4 +26,10 @@ class Order extends Model
     {
         return $this->hasMany(OrderItem::class, 'OrderNo', 'OrderNo');
     }
+    
+public function user()
+{
+    return $this->belongsTo(User::class, 'UserID');
+}
+
 }
